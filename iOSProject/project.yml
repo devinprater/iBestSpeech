@@ -1,0 +1,30 @@
+name: OpenBSTTester
+options:
+  deploymentTarget: "17.0"
+
+targets:
+  OpenBSTTester:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.devin.ibestspeech.tester
+      SWIFT_OBJC_BRIDGING_HEADER: Bridging-Header.h
+      HEADER_SEARCH_PATHS: [Frameworks/OpenBST.xcframework/ios-arm64/Headers, Frameworks/OpenBST.xcframework/ios-arm64-simulator/Headers]
+      GENERATE_INFOPLIST_FILE: NO
+      INFOPLIST_FILE: Info/Info.plist
+    frameworks:
+      - Frameworks/OpenBST.xcframework
+
+  OpenBSTExtension:
+    type: app-extension
+    platform: iOS
+    sources: [OpenBSTExtension/Sources]
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.devin.ibestspeech.extension
+      SWIFT_OBJC_BRIDGING_HEADER: ../Bridging-Header.h
+      HEADER_SEARCH_PATHS: [../Frameworks/OpenBST.xcframework/ios-arm64/Headers, ../Frameworks/OpenBST.xcframework/ios-arm64-simulator/Headers]
+      GENERATE_INFOPLIST_FILE: NO
+      INFOPLIST_FILE: Info/ExtensionInfo.plist
+    frameworks:
+      - ../Frameworks/OpenBST.xcframework

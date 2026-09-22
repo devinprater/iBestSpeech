@@ -1,0 +1,397 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1563A20A88E9E7698F860F35 /* OpenBST.swift in Sources */ = {isa = PBXBuildFile; fileRef = 550CF5191E4F6B3C355E5061 /* OpenBST.swift */; };
+		66A7F119FC94855696886379 /* OpenBSTSpeechProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB6BCE7F06C00B6F75A57C73 /* OpenBSTSpeechProvider.swift */; };
+		670A7A7F3CD98E1404CC30F7 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F411F074543B556206F4F477 /* ContentView.swift */; };
+		856C59F7757F764706BB5A6F /* OpenBSTApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E85FE83C9FBA8B00C2B1589B /* OpenBSTApp.swift */; };
+		A17D52D4E3258151E220AE9A /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BC49475F4CF4209C66CC995 /* AudioManager.swift */; };
+		A1D2249983E43A2BEAF997D9 /* OpenBSTAudioUnit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12A8E7938FF1F116B8CCBCB0 /* OpenBSTAudioUnit.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0911DBD367783C17026BC243 /* OpenBSTTester.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenBSTTester.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0BC49475F4CF4209C66CC995 /* AudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioManager.swift; sourceTree = "<group>"; };
+		12A8E7938FF1F116B8CCBCB0 /* OpenBSTAudioUnit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBSTAudioUnit.swift; sourceTree = "<group>"; };
+		40E9B40530FCB908FED1B0EE /* OpenBSTExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = OpenBSTExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		550CF5191E4F6B3C355E5061 /* OpenBST.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBST.swift; sourceTree = "<group>"; };
+		AB6BCE7F06C00B6F75A57C73 /* OpenBSTSpeechProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBSTSpeechProvider.swift; sourceTree = "<group>"; };
+		E85FE83C9FBA8B00C2B1589B /* OpenBSTApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBSTApp.swift; sourceTree = "<group>"; };
+		F411F074543B556206F4F477 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0218944A4B49AEF63B35213F /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				12A8E7938FF1F116B8CCBCB0 /* OpenBSTAudioUnit.swift */,
+				AB6BCE7F06C00B6F75A57C73 /* OpenBSTSpeechProvider.swift */,
+			);
+			name = Sources;
+			path = OpenBSTExtension/Sources;
+			sourceTree = "<group>";
+		};
+		8AC937A02E3656CEB0CAD544 = {
+			isa = PBXGroup;
+			children = (
+				C53E2F5305F0A99EEC791B57 /* Sources */,
+				0218944A4B49AEF63B35213F /* Sources */,
+				FF1F928F95CEAEE4A7E28533 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C53E2F5305F0A99EEC791B57 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				0BC49475F4CF4209C66CC995 /* AudioManager.swift */,
+				F411F074543B556206F4F477 /* ContentView.swift */,
+				550CF5191E4F6B3C355E5061 /* OpenBST.swift */,
+				E85FE83C9FBA8B00C2B1589B /* OpenBSTApp.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		FF1F928F95CEAEE4A7E28533 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				40E9B40530FCB908FED1B0EE /* OpenBSTExtension.appex */,
+				0911DBD367783C17026BC243 /* OpenBSTTester.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		D6E44F3A8E2055C2A89316ED /* OpenBSTTester */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 705F003A58C7A2FBDC896C41 /* Build configuration list for PBXNativeTarget "OpenBSTTester" */;
+			buildPhases = (
+				D559C1174E4F5E905EA8E7D0 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpenBSTTester;
+			packageProductDependencies = (
+			);
+			productName = OpenBSTTester;
+			productReference = 0911DBD367783C17026BC243 /* OpenBSTTester.app */;
+			productType = "com.apple.product-type.application";
+		};
+		FE666A2536481A04A4F3D0BA /* OpenBSTExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CD5B57CD2531B6608A9E39CF /* Build configuration list for PBXNativeTarget "OpenBSTExtension" */;
+			buildPhases = (
+				41DBEE63563288BEB57F01F5 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpenBSTExtension;
+			packageProductDependencies = (
+			);
+			productName = OpenBSTExtension;
+			productReference = 40E9B40530FCB908FED1B0EE /* OpenBSTExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		190429FA6FB0973DF5295AD8 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 34ECECBB76813740028329BB /* Build configuration list for PBXProject "OpenBSTTester" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 8AC937A02E3656CEB0CAD544;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = FF1F928F95CEAEE4A7E28533 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D6E44F3A8E2055C2A89316ED /* OpenBSTTester */,
+				FE666A2536481A04A4F3D0BA /* OpenBSTExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		41DBEE63563288BEB57F01F5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1D2249983E43A2BEAF997D9 /* OpenBSTAudioUnit.swift in Sources */,
+				66A7F119FC94855696886379 /* OpenBSTSpeechProvider.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D559C1174E4F5E905EA8E7D0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A17D52D4E3258151E220AE9A /* AudioManager.swift in Sources */,
+				670A7A7F3CD98E1404CC30F7 /* ContentView.swift in Sources */,
+				1563A20A88E9E7698F860F35 /* OpenBST.swift in Sources */,
+				856C59F7757F764706BB5A6F /* OpenBSTApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		01655610F98E0DAECE81DCEC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"Frameworks/OpenBST.xcframework/ios-arm64/Headers",
+					"Frameworks/OpenBST.xcframework/ios-arm64-simulator/Headers",
+				);
+				INFOPLIST_FILE = Info/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.devin.openbst.tester;
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		0409047056D49C6DA196F706 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"../Frameworks/OpenBST.xcframework/ios-arm64/Headers",
+					"../Frameworks/OpenBST.xcframework/ios-arm64-simulator/Headers",
+				);
+				INFOPLIST_FILE = Info/ExtensionInfo.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.devin.openbst.extension;
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "../Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		246552CA8C9765A87D7F5746 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"Frameworks/OpenBST.xcframework/ios-arm64/Headers",
+					"Frameworks/OpenBST.xcframework/ios-arm64-simulator/Headers",
+				);
+				INFOPLIST_FILE = Info/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.devin.openbst.tester;
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		7369FEEBF2F8A3F543B437C4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		984091264C45A83D08276DFB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		F2BD915721C0D55461745725 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"../Frameworks/OpenBST.xcframework/ios-arm64/Headers",
+					"../Frameworks/OpenBST.xcframework/ios-arm64-simulator/Headers",
+				);
+				INFOPLIST_FILE = Info/ExtensionInfo.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.devin.openbst.extension;
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "../Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		34ECECBB76813740028329BB /* Build configuration list for PBXProject "OpenBSTTester" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7369FEEBF2F8A3F543B437C4 /* Debug */,
+				984091264C45A83D08276DFB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		705F003A58C7A2FBDC896C41 /* Build configuration list for PBXNativeTarget "OpenBSTTester" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				01655610F98E0DAECE81DCEC /* Debug */,
+				246552CA8C9765A87D7F5746 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CD5B57CD2531B6608A9E39CF /* Build configuration list for PBXNativeTarget "OpenBSTExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F2BD915721C0D55461745725 /* Debug */,
+				0409047056D49C6DA196F706 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 190429FA6FB0973DF5295AD8 /* Project object */;
+}

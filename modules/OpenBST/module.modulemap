@@ -1,0 +1,4 @@
+module OpenBST {
+    header "/Users/devinprater/openbst_ios/modules/OpenBST/include/bst.h"
+    export *
+}
