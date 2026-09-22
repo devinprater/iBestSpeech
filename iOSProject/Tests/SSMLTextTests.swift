@@ -214,6 +214,19 @@ struct SSMLTextTests {
         expect("<speak>Read\u{2026}6:23 PM</speak>", "Read...6- 23 PM",
                "literal ellipsis")
 
+        print("\n-- the engine's lead-in character must not arrive from text --")
+        // '~' introduces the engine's own commands. A literal one in text is
+        // obeyed rather than read, so "~x]" switches the parser into dictionary
+        // mode for the rest of the utterance. Replaced with a space, not deleted,
+        // so a lead-in between two words cannot join them.
+        expect("<speak>Read ~x] 6:23 PM</speak>", "Read x] 6- 23 PM",
+               "dictionary mode cannot be entered from text")
+        expect("<speak>Read ~p] 6:23 PM</speak>", "Read p] 6- 23 PM",
+               "phoneme mode cannot be entered from text")
+        expect("<speak>Approximately ~5 items</speak>", "Approximately 5 items",
+               "a stray tilde is neutralised")
+        expect("<speak>a~b</speak>", "a b", "a lead-in between words does not join them")
+
         print("\n-- accented text, which the engine cannot read at all --")
         // 1995 goes silent on "café"; the accented character is dropped rather
         // than passed on as a glyph the engine would say a sound for.

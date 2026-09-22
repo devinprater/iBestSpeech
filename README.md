@@ -94,6 +94,24 @@ module goes silent on "café" instead of saying it. Diacritics are therefore
 dropped after decomposition: "café" reaches the engine as "cafe". That costs an
 accent to buy back speech that would otherwise be missing.
 
+**The engine's lead-in character is neutralised.** A tilde introduces the
+engine's own commands, and a literal one in text is obeyed rather than read:
+"Read ~x] 6:23 PM" puts the parser into dictionary mode for the rest of the
+utterance, and "~p]" phoneme mode. Measured on 1995, either turns a 24,866
+sample utterance into roughly 34,000. A tilde becomes a space — not a deletion,
+so that one sitting between two words cannot join them.
+
+The engine's native **times-of-day** option is not reachable from here. The
+Keynote GOLD manual and the B32 DLL both document `~n9,x]` (8:00 as "eight
+o'clock"), default on, and the Android port exposes it. This port cannot turn it
+on: a `~nN,x]` command is consumed and the rest of the utterance then produces
+nothing at all, on every build, whichever value is given — so the colon is
+rewritten in the SSML layer instead, as described above. The colon is also
+handled inside the engine's own tokeniser, which turns a digit-flanked one into
+a comma; that comma arrives with no space after it, and "8,00" is silent where
+"8, 00" speaks, which is why the colon needs the treatment above rather than
+being left alone.
+
 One thing here is **not** fixed, and is worth stating plainly: any sentence that
 runs a full stop straight into a digit — `Read...6:23 PM`, `Read.6:23 PM` —
 is silent on every build. Measured on 1995, 1998ENG and 2006ENG: the engine

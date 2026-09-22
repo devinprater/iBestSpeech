@@ -471,6 +471,13 @@ public enum SSMLText {
 
             if invisibleCharacters.contains(character) { continue }
             if value == 0x00A0 { output.append(" "); continue }
+            // The engine's own lead-in character. Left in place, text can switch
+            // the parser into phoneme or dictionary mode for the rest of the
+            // utterance, or set its own rate — measured: "Read ~p] 6- 23 PM" goes
+            // from 24,866 samples to 34,076, and "~x]" to 34,090, because the
+            // command is obeyed rather than read. A space rather than a deletion,
+            // so that a lead-in sitting between two words does not join them.
+            if character == "~" { output.append(" "); continue }
             if character.isASCII { output.append(character); continue }
 
             // Typographic punctuation has an ASCII form but no diacritic to
