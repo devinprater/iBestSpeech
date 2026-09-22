@@ -38,9 +38,12 @@ stripping it:
 
 - Tags become a **space**, never nothing. Deleting one joins the words it sat
   between: `iBestSpeech<break/>recently` came out "iBestSpeechrecently".
-- Entities are decoded, and typographic characters folded to ASCII, because the
-  engine reads a single-byte code page and cannot represent a curly quote or an
-  em dash.
+- Entities are decoded, and characters the engine cannot read are folded away,
+  because the engine reads a single-byte code page: a curly quote or an em dash
+  has no representation there, and a *literal* one behaves worse than an entity
+  did, splicing a stray glyph onto the word it follows. Named entities were
+  already handled; the same characters arriving literally are now folded to the
+  same ASCII, so both spellings produce the same audio.
 - `prosody` pitch, rate and volume, per piece, so a nested element adjusts only
   its own span.
 - `break` becomes real silence, from `time` or `strength`, capped so a malformed
@@ -73,6 +76,31 @@ matter:
 With both, "5:19 PM" reads exactly as "five nineteen PM" does — byte-identical
 audio on the 1995 and 2006 English builds. Colons that are not times are left
 alone: "Note: hello", "Chapter 3: page 5" and "http://x.com" already work.
+
+**Invisible characters are removed, not folded.** The system wraps an
+accessibility value in bidirectional marks — most often the first-strong isolate,
+`U+2068` — and to this engine a mark is a code-page glyph like any other, so it
+is spliced onto the following word. In Messages that is the stray sound heard
+before "Read": the engine reads "Read" together with the mark that came with it.
+A soft hyphen, a byte order mark or a non-breaking space is worse still and makes
+the whole utterance **silent**. Bidi marks and isolates, zero width characters,
+soft hyphen and the byte order mark are therefore deleted; a non-breaking space
+becomes an ordinary one.
+
+Accented characters are a real trade-off rather than a clean win. A localized
+build does read its own accents — the 2006 German module says "über" with the
+umlaut — but any text may be handed to any of the twenty builds, and the 1995
+module goes silent on "café" instead of saying it. Diacritics are therefore
+dropped after decomposition: "café" reaches the engine as "cafe". That costs an
+accent to buy back speech that would otherwise be missing.
+
+One thing here is **not** fixed, and is worth stating plainly: any sentence that
+runs a full stop straight into a digit — `Read...6:23 PM`, `Read.6:23 PM` —
+is silent on every build. Measured on 1995, 1998ENG and 2006ENG: the engine
+abandons the utterance at that point. This is not the folding above; the same
+input written in plain ASCII is silent too, and "5.19 PM" (digits either side) is
+fine, so it is the stop-then-digit shape. The folding does remove a stray glyph
+that made the failure worse.
 
 Rate and pitch are translated to the engine's settings, which differ from
 VoiceOver's in ways that are not obvious:

@@ -369,6 +369,8 @@ public enum SSMLText {
     /// Turns accumulated raw text into what the engine should be given.
     static func finish(_ raw: String, sayAs: String?) -> String {
         var text = decodeEntities(raw)
+        // Folded first, so every pass after this one sees plain ASCII.
+        text = foldForEngine(text)
         text = collapseWhitespace(text)
         text = closeGapsBeforePunctuation(text)
         text = fixTimes(text)
@@ -424,6 +426,105 @@ public enum SSMLText {
         }
         return String(output)
     }
+
+    /// Folds characters the engine cannot read.
+    ///
+    /// The engine reads a single-byte code page, so anything outside ASCII is
+    /// taken as a code-page glyph and spliced onto the word it follows. Measured
+    /// on 1995 with "Read 6:23 PM": a left-to-right mark made "Read" a
+    /// fifteen-byte token instead of six, and a BOM, a soft hyphen or a
+    /// non-breaking space made the whole utterance **silent**. That is the bug
+    /// where Messages says something like "oz" before "Read": iOS wraps an
+    /// accessibility value in bidi marks, and the mark is what the engine
+    /// reaches for first.
+    ///
+    /// Three groups are handled, in this order:
+    ///
+    /// - **Invisible formatting characters** — bidi marks and isolates, zero
+    ///   width spaces, soft hyphen, word joiner, byte order mark — are removed.
+    ///   They carry no sound, and `collapseWhitespace` tidies what that leaves.
+    /// - **Non-breaking spaces** become ordinary ones, so the existing
+    ///   whitespace handling picks them up.
+    /// - **Anything else outside ASCII** is decomposed, and its diacritics are
+    ///   dropped: "café" is handed over as "cafe", "über" as "uber".
+    ///
+    /// That last rule is a compromise, and deliberately so. A localized build
+    /// does read its own accented characters for real — 2006GER says "über"
+    /// with the umlaut — but there is no single right answer here: the same text
+    /// can be handed to any of the twenty builds, and 1995 goes **silent** on
+    /// "café" rather than mispronouncing it. Folding costs a little accent and
+    /// buys back speech that would otherwise be missing entirely. Diacritics are
+    /// dropped only after decomposition, so a character that decomposes to
+    /// nothing (a lone accent, U+0301) disappears instead of becoming a
+    /// question mark.
+    ///
+    /// What this does not reach: a character with no ASCII form, such as an
+    /// emoji, still reaches the engine and is still read as a glyph. Dropping
+    /// those is a larger decision than it looks — some builds do use the higher
+    /// code page for their own currency and punctuation — so they are left for
+    /// now.
+    static func foldForEngine(_ text: String) -> String {
+        var output = ""
+        output.reserveCapacity(text.count)
+        for character in text {
+            let value = character.unicodeScalars.first.map { Int($0.value) } ?? 0
+
+            if invisibleCharacters.contains(character) { continue }
+            if value == 0x00A0 { output.append(" "); continue }
+            if character.isASCII { output.append(character); continue }
+
+            // Typographic punctuation has an ASCII form but no diacritic to
+            // decompose, so it needs naming explicitly. These are the same
+            // replacements the named entities above already make, which is why
+            // "&ldquo;quoted&rdquo;" was already correct while a literal curly
+            // quote was not.
+            if let replacement = typographicReplacements[character] {
+                output += replacement
+                continue
+            }
+
+            let folded = String(character)
+                .folding(options: .diacriticInsensitive, locale: nil)
+            if folded == String(character) {
+                // Nothing to fold — a character with no ASCII form, such as an
+                // emoji or a symbol, is passed through unchanged (see above).
+                output.append(character)
+            } else {
+                output += folded.filter { $0.isASCII }
+            }
+        }
+        return output
+    }
+
+    /// Typographic characters with an ASCII equivalent the engine can read.
+    /// These match the replacements `namedEntities` makes, so a literal
+    /// character and its entity produce the same audio.
+    private static let typographicReplacements: [Character: String] = [
+        "\u{2018}": "'",  "\u{2019}": "'",   // single quotation marks
+        "\u{201A}": ",",  "\u{201B}": "'",   // single low quote, reversed
+        "\u{201C}": "\"", "\u{201D}": "\"",  // double quotation marks
+        "\u{201E}": "\"", "\u{201F}": "\"",  // double low quote, reversed
+        "\u{2013}": "-",  "\u{2014}": "-",   // en dash, em dash
+        "\u{2015}": "-",                     // horizontal bar
+        "\u{2026}": "...",                   // ellipsis
+        "\u{2032}": "'",  "\u{2033}": "\"",  // prime, double prime
+    ]
+
+    /// Characters that carry no sound but do corrupt the reading, so they are
+    /// removed rather than replaced. Left-to-right and right-to-left marks,
+    /// the bidi embedding and override controls, the isolates iOS prefers for
+    /// wrapping values, zero width space and non-joiner, word joiner, soft
+    /// hyphen and the byte order mark.
+    private static let invisibleCharacters: Set<Character> = [
+        "\u{00AD}",                                     // soft hyphen
+        "\u{200B}", "\u{200C}", "\u{200D}",             // zero width space, non-joiner, joiner
+        "\u{200E}", "\u{200F}",                         // left-to-right / right-to-left mark
+        "\u{202A}", "\u{202B}", "\u{202C}",             // bidi embedding and pop
+        "\u{202D}", "\u{202E}",                         // bidi overrides
+        "\u{2060}",                                     // word joiner
+        "\u{2066}", "\u{2067}", "\u{2068}", "\u{2069}", // bidi isolates
+        "\u{FEFF}",                                     // byte order mark
+    ]
 
     /// `say-as` handling.
     ///

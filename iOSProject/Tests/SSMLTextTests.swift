@@ -182,6 +182,47 @@ struct SSMLTextTests {
         expect("a&mdash;b", "a-b", "em dash")
         expect("a&ndash;b", "a-b", "en dash")
 
+        print("\n-- invisible characters the system wraps values in --")
+        // iOS wraps an accessibility value in bidi marks. To the engine those
+        // are code-page glyphs, so one of them turns "Read" into "Read" plus a
+        // stray sound — the "oz" heard in Messages — and a soft hyphen or a
+        // byte order mark makes the whole utterance silent.
+        expect("<speak>\u{200e}Read 6:23 PM</speak>", "Read 6- 23 PM",
+               "left-to-right mark before a word")
+        expect("<speak>\u{200f}Read 6:23 PM</speak>", "Read 6- 23 PM",
+               "right-to-left mark before a word")
+        expect("<speak>\u{2068}Read 6:23 PM</speak>", "Read 6- 23 PM",
+               "first-strong isolate, which is what iOS prefers")
+        expect("<speak>\u{2068}Read 6:23 PM\u{2069}</speak>", "Read 6- 23 PM",
+               "a matched isolate pair")
+        expect("<speak>\u{202a}Read 6:23 PM\u{202c}</speak>", "Read 6- 23 PM",
+               "an embedding control")
+        expect("<speak>Read\u{200b} 6:23 PM</speak>", "Read 6- 23 PM",
+               "zero width space")
+        expect("<speak>\u{feff}Read 6:23 PM</speak>", "Read 6- 23 PM",
+               "byte order mark")
+        expect("<speak>Read\u{00ad} 6:23 PM</speak>", "Read 6- 23 PM",
+               "soft hyphen")
+        expect("<speak>Read\u{2060} 6:23 PM</speak>", "Read 6- 23 PM",
+               "word joiner")
+        expect("<speak>\u{201c}Read 6:23 PM\u{201d}</speak>", "\"Read 6- 23 PM\"",
+               "literal curly double quotes")
+        expect("<speak>\u{2019}Read 6:23 PM</speak>", "'Read 6- 23 PM",
+               "literal curly apostrophe, as autocorrect writes it")
+        expect("<speak>Read\u{2014}6:23 PM</speak>", "Read-6- 23 PM",
+               "literal em dash")
+        expect("<speak>Read\u{2026}6:23 PM</speak>", "Read...6- 23 PM",
+               "literal ellipsis")
+
+        print("\n-- accented text, which the engine cannot read at all --")
+        // 1995 goes silent on "café"; the accented character is dropped rather
+        // than passed on as a glyph the engine would say a sound for.
+        expect("<speak>caf\u{00e9} at 5:19 PM</speak>", "cafe at 5- 19 PM",
+               "e-acute is folded")
+        expect("<speak>\u{00fc}ber</speak>", "uber", "u-umlaut is folded")
+        expect("<speak>caf\u{0065}\u{0301}</speak>", "cafe",
+               "a combining accent does not become a stray character")
+
         print("\n-- markup that is not text --")
         expect("<!-- a comment -->Hello", "Hello", "comment")
         expect("<!-- a > b -->Hello", "Hello", "comment containing an angle bracket")
