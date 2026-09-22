@@ -81,7 +81,10 @@ public enum SSMLText {
         return (plainText(from: ssml), parameters.pitch, parameters.rate)
     }
 
-    /// Pitch and rate from the markup, as percentages, if present.
+    /// Pitch and rate from the markup, as VoiceOver states them.
+    ///
+    /// On the same 0-100 scale. The engine needs them converted before use —
+    /// see `EngineParameters`; the raw values are meaningless to it.
     public static func speechParameters(from ssml: String) -> (pitch: Int?, rate: Int?) {
         func percentage(_ attribute: String) -> Int? {
             // The value may carry a sign and a decimal — a relative adjustment

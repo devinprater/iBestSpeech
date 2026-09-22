@@ -120,8 +120,8 @@ public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
         }
         guard let bst = OpenBST(build: buildName) else { return }
 
-        if let pitch { bst.set(.pitch, pitch) }
-        if let rate { bst.set(.rate, rate) }
+        if let pitch { bst.set(.pitch, EngineParameters.enginePitch(forVoiceOver: Double(pitch))) }
+        if let rate { bst.set(.rate, EngineParameters.engineRate(forVoiceOver: Double(rate))) }
 
         guard let samples = bst.synthesize(text), !samples.isEmpty else {
             clearState()
