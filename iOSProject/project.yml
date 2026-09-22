@@ -11,6 +11,13 @@ settings:
     # and there is no 32-bit iOS target left to support.
     ONLY_ACTIVE_ARCH: YES
 
+# Shared between the app and the extension, as Apple's speech-synthesis sample
+# does. The extension has no other way to reach app state.
+appGroups:
+  group.com.devin.ibestspeech:
+    - iBestSpeech
+    - iBestSpeechProvider
+
 targets:
   iBestSpeech:
     type: application

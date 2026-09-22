@@ -93,10 +93,25 @@ public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
 
     // MARK: - Requests
 
+    /// Pulls the build name out of a voice identifier.
+    ///
+    /// The system returns identifiers re-prefixed with the extension's bundle
+    /// ID — it hands back "com.devin.ibestspeech.provider.com.devin.ibestspeech.
+    /// 2006ENG" for the identifier "com.devin.ibestspeech.2006ENG" that was
+    /// registered. Matching on the last matching occurrence rather than a prefix
+    /// is what keeps speech working.
+    static func buildName(from identifier: String) -> String? {
+        guard let range = identifier.range(of: voiceIdentifierPrefix, options: .backwards) else {
+            return nil
+        }
+        let build = String(identifier[range.upperBound...])
+        guard !build.isEmpty, OpenBST.availableBuilds().contains(build) else { return nil }
+        return build
+    }
+
     public override func synthesizeSpeechRequest(_ speechRequest: AVSpeechSynthesisProviderRequest) {
         let voiceID = speechRequest.voice.identifier
-        guard voiceID.hasPrefix(Self.voiceIdentifierPrefix) else { return }
-        let buildName = String(voiceID.dropFirst(Self.voiceIdentifierPrefix.count))
+        guard let buildName = Self.buildName(from: voiceID) else { return }
 
         let (text, pitch, rate) = Self.parseSSML(speechRequest.ssmlRepresentation)
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

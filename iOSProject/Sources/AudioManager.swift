@@ -91,6 +91,22 @@ final class AudioManager: ObservableObject {
                 if ours.isEmpty {
                     report += "  (none — the extension is not being loaded)\n"
                 }
+
+                // End-to-end: speak through the real provider path. This drives
+                // AVSpeechSynthesizer with one of our own voices, which is what
+                // VoiceOver does — so it exercises the extension's synthesize
+                // and render code rather than the in-app engine.
+                report += "\n-- end-to-end through the extension --\n"
+                if let first = AVSpeechSynthesisVoice.speechVoices()
+                    .first(where: { $0.identifier.contains("com.devin.ibestspeech") }) {
+                    report += "using voice: \(first.identifier)\n"
+                    let probe = ExtensionProbe()
+                    let outcome = await probe.speak("Hello from the speech provider extension.",
+                                                    voice: first)
+                    report += "outcome: \(outcome)\n"
+                } else {
+                    report += "no provider voice available to test with\n"
+                }
                 let url = URL.documentsDirectory.appending(path: "selftest.txt")
                 try? report.write(to: url, atomically: true, encoding: .utf8)
                 NSLog("[selftest]\n%@", report)
