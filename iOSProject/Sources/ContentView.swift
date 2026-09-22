@@ -5,6 +5,10 @@ import SwiftUI
 /// Installing the app is what registers the voice with the system, so the
 /// primary job of this screen is to tell the user how to find the voice in
 /// VoiceOver and to let them audition it without leaving.
+///
+/// Only the navigation title is a real heading. The section labels below are
+/// plain text, which keeps the rotor's heading list to a single entry instead
+/// of making the user step through five of them.
 struct ContentView: View {
     @StateObject private var audioManager = AudioManager()
     @State private var text: String = "Hello from iBestSpeech. This is the Keynote Gold voice, running on iOS."
@@ -17,7 +21,7 @@ struct ContentView: View {
                         .lineLimit(3...6)
                         .accessibilityLabel("Text to speak")
                 } header: {
-                    Text("Preview text")
+                    label("Preview text")
                 }
 
                 Section {
@@ -45,7 +49,7 @@ struct ContentView: View {
                     }
                     .disabled(!audioManager.isSpeaking)
                 } header: {
-                    Text("Test the engine")
+                    label("Test the engine")
                 }
 
                 if let error = audioManager.lastError {
@@ -60,15 +64,15 @@ struct ContentView: View {
                     Text("To use this voice everywhere, open Settings, then Accessibility, then VoiceOver, then Speech, then Voice, then English. Keynote Gold appears in that list once this app is installed.")
                         .font(.callout)
                 } header: {
-                    Text("Use with VoiceOver")
+                    label("Use with VoiceOver")
                 }
 
                 Section {
-                    Text("\(audioManager.availableBuilds.count) engine builds are available.")
+                    Text("\(audioManager.availableBuilds.count) engine builds are available. Some builds read only their own writing system.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } header: {
-                    Text("About")
+                    label("About")
                 }
             }
             .navigationTitle("iBestSpeech")
@@ -85,6 +89,16 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    /// A section label that is styled like a header but carries no heading trait,
+    /// so VoiceOver's heading rotor lists only the navigation title.
+    private func label(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .accessibilityAddTraits(.isStaticText)
+            .accessibilityRemoveTraits(.isHeader)
     }
 }
 
