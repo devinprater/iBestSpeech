@@ -379,29 +379,48 @@ public enum SSMLText {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Rewrites a clock time's colon as a full stop, so the engine can say it.
+    /// Rewrites a clock time's colon so the engine reads the time instead of
+    /// choking on it.
     ///
     /// A colon between two digits makes the engine produce **no audio at all**,
-    /// on every build. Measured on 1995, 1998ENG and 2006ENG: "3:20 PM",
-    /// "12:00", "14:30", "3:20:45" and "It is 3:20 PM." are silent, while
-    /// "3.20 PM" and "3-20 PM" speak on all three. The engine has a tokeniser
-    /// rule for a digit-flanked colon, and it does not produce a time the number
-    /// reader accepts.
+    /// on every build. Measured on 1995, 1998ENG and 2006ENG: "5:19 PM",
+    /// "3:20 PM", "12:00", "14:30", "3:20:45" and "It is 3:20 PM." are all
+    /// silent, while a hyphen in the colon's place speaks on all three.
     ///
-    /// A full stop is not a guess: it is one of the two forms that work, and it
-    /// is what a time reads as to the engine's own number handling. Only a colon
-    /// with digits immediately either side is touched, so "Note: hello",
-    /// "Chapter 3: page 5" and "http://x.com" are unaffected — and those already
-    /// work.
+    /// The replacement is a hyphen **and a space**, and both parts are
+    /// load-bearing:
+    ///
+    /// - The **hyphen** takes the engine's number-group separator path, which
+    ///   is its only route for two runs of digits. A full stop instead, which
+    ///   is what this used to write, sends "5.19" down the decimal rule: it
+    ///   reads "five point one nine", an hour and minutes announced as a
+    ///   decimal fraction. That is the mispronunciation this fixes.
+    /// - The **space** keeps the runs apart. Without it "5-19" is a single
+    ///   two-group number, and 1998ENG truncates the second group: "5-19 PM"
+    ///   says "five" and stops. With it the reading is **byte-identical** to
+    ///   writing the words out — verified for "5- 19 PM" against "five
+    ///   nineteen PM" on 1995 and 2006ENG, across every sample.
+    ///
+    /// Only a colon with a digit immediately either side is touched, so
+    /// "Note: hello", "Chapter 3: page 5" and "http://x.com" are unaffected —
+    /// and those already work. A second colon is a group separator now:
+    /// "3:20:45" becomes "3- 20- 45", which speaks as a three-group number
+    /// rather than as a time, where the old rewrite "3.20.45" was read as a
+    /// decimal and then abandoned mid-utterance.
     static func fixTimes(_ text: String) -> String {
         let characters = Array(text)
         var output: [Character] = []
-        output.reserveCapacity(characters.count)
+        output.reserveCapacity(characters.count + 8)
 
         for (index, character) in characters.enumerated() {
             let flankedByDigits = index > 0 && index + 1 < characters.count
                 && characters[index - 1].isNumber && characters[index + 1].isNumber
-            output.append(character == ":" && flankedByDigits ? "." : character)
+            if character == ":" && flankedByDigits {
+                output.append("-")
+                output.append(" ")
+            } else {
+                output.append(character)
+            }
         }
         return String(output)
     }

@@ -191,10 +191,21 @@ struct SSMLTextTests {
         expect("Hello , world", "Hello, world", "no gap before punctuation")
 
         print("\n-- a clock time: the colon makes it silent, so it is rewritten --")
-        expect("<speak>It is 3:20 PM.</speak>", "It is 3.20 PM.", "3:20 PM")
-        expect("<speak>12:00</speak>", "12.00", "12:00")
-        expect("<speak>14:30</speak>", "14.30", "24-hour time")
-        expect("<speak>3:20:45</speak>", "3.20.45", "seconds too")
+        // A hyphen takes the engine's number-group separator path. A full stop
+        // does not: it routes "5.19" through the decimal rule, which says
+        // "five point one nine" — an hour and minutes read as a fraction.
+        expect("<speak>It is 5:19 PM.</speak>", "It is 5- 19 PM.", "5:19 PM")
+        expect("<speak>3:20 PM</speak>", "3- 20 PM", "3:20 PM")
+        expect("<speak>12:00</speak>", "12- 00", "12:00")
+        expect("<speak>14:30</speak>", "14- 30", "24-hour time")
+        // The space matters on its own: without it "5-19" is one two-group
+        // number, and 1998ENG truncates the second group to silence.
+        expect("<speak>5:19</speak>", "5- 19", "no meridiem")
+        expect("<speak>17:19</speak>", "17- 19", "17:19")
+        // A second colon is a second separator, not a decimal point: the old
+        // rewrite made "3.20.45", which the engine read as a decimal and then
+        // abandoned part way through the utterance.
+        expect("<speak>3:20:45</speak>", "3- 20- 45", "seconds too")
         // Colons that are not clock times must be left alone — these already work
         // in the engine, and rewriting them would be vandalism.
         expect("<speak>Note: hello</speak>", "Note: hello", "a colon after a word")

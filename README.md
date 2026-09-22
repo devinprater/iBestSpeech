@@ -57,6 +57,23 @@ test corpus never covers the case. A comma is inserted between them, which the
 engine reads as a short pause; a pause between numbers is natural speech anyway,
 and the alternative is silence.
 
+A **clock time** needs different treatment again, because the colon between its
+digits is worse than silent — it makes the engine produce no samples at all, on
+every build. The colon is rewritten as a hyphen **and a space**, and both halves
+matter:
+
+- The hyphen takes the engine's number-group separator path, its only route for
+  two runs of digits. Writing a full stop instead, which is what an earlier
+  version did, sends "5.19" down the decimal rule: the engine says "five point
+  one nine", announcing an hour and minutes as a fraction. A hyphen makes it say
+  "five nineteen".
+- The space keeps the runs apart. Without it "5-19" is one two-group number, and
+  the 1998 English module truncates the second group to silence.
+
+With both, "5:19 PM" reads exactly as "five nineteen PM" does — byte-identical
+audio on the 1995 and 2006 English builds. Colons that are not times are left
+alone: "Note: hello", "Chapter 3: page 5" and "http://x.com" already work.
+
 Rate and pitch are translated to the engine's settings, which differ from
 VoiceOver's in ways that are not obvious:
 
