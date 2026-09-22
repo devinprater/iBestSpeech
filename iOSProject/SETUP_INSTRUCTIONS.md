@@ -1,31 +1,47 @@
-# OpenBST iOS Setup Instructions
+# iBestSpeech iOS Setup
 
-## 1. Create Xcode Project
-- Create a new iOS App project (SwiftUI).
-- Minimum Deployment Target: iOS 17.0.
+## Generate the project
 
-## 2. Add Framework
-- Drag and drop `OpenBST.xcframework` into the project.
-- In "General" -> "Frameworks, Libraries, and Embedded Content", ensure it is set to "Do Not Embed" (since it's a static library).
+The `.xcodeproj` is generated, not hand-edited:
 
-## 3. Add Source Files
-- Add `OpenBST.swift`, `AudioManager.swift`, and `ContentView.swift` to the project.
+```sh
+cd iOSProject
+python3 build_frameworks.py --upstream ~/openbst   # rebuild the XCFramework
+xcodegen generate                                   # write iBestSpeech.xcodeproj
+```
 
-## 4. Configure Bridging Header
-- Create a file named `Bridging-Header.h` in the project root.
-- Add the following line:
-  `#include "bst.h"`
-- In "Build Settings", search for "Objective-C Bridging Header" and set it to the path of this file (e.g., `OpenBST_App/Bridging-Header.h`).
+## Targets
 
-## 5. Run
-- Set the entry point to `ContentView`.
-- Build and run on an iOS ARM64 device.
+- `iBestSpeech` — the app. Installs, and provides the audition screen.
+- `iBestSpeechProvider` — the `app-extension` that supplies voices to the
+  system. Embedded in the app; never installed standalone.
 
-## 6. Implementing the System-Wide Voice (Extension)
-To make the voice available to VoiceOver:
-1. **Add a New Target**: In Xcode, add a new target of type **"Speech Synthesis Provider"**.
-2. **Name the Target**: .
-3. **Add Sources**: Add `OpenBSTSpeechProvider.swift` and `OpenBSTAudioUnit.swift` to this target.
-4. **Link Framework**: Add `OpenBST.xcframework` to the extension target.
-5. **App Group**: Create an App Group (e.g., `group.com.devin.openbst`) and enable it for both the main App and the Extension.
-6. **Deployment**: Install the app on your device. Go to **Settings -> Accessibility -> VoiceOver -> Speech -> Voices** and look for **"Keynote Gold"**.
+## Making the voice appear in VoiceOver
+
+1. Build and run on a device.
+2. Settings, Accessibility, VoiceOver, Speech, Voices, English.
+3. Pick **Keynote Gold**.
+
+The provider publishes one voice per engine build. If the list is empty the
+extension is not being loaded — check that it is embedded and that both targets
+use the same team.
+
+## Why the XCFramework is built by a script
+
+The simulator slice is fat (`arm64` + `x86_64`) and the filenames inside each
+slice have to match what `Info.plist` declares. Hand-assembling the framework
+got both wrong: it listed `libbst_ios.a` for the simulator slice, where the
+file actually on disk was `libbst_sim.a`, so device objects were linked into
+simulator builds. `build_frameworks.py` lets `xcodebuild -create-xcframework`
+write the plist instead of maintaining it by hand.
+
+## Known constraints
+
+- Deployment target is iOS 17.0.
+- Header search paths are conditioned on the SDK. Listing both slices in one
+  array lets the device headers win for simulator builds and the link fails.
+- `frameworks:` is not part of the XcodeGen spec and is silently ignored. The
+  library must be listed under `dependencies:` or it never reaches the link
+  phase.
+- The Swift wrapper lives in `Shared/` because the extension needs it too: the
+  provider runs in its own process and cannot see the app target's sources.

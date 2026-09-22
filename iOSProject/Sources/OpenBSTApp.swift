@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct OpenBSTTesterApp: App {
+struct iBestSpeechApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()

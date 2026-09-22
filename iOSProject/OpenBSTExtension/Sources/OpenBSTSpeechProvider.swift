@@ -2,134 +2,216 @@ import Foundation
 import AVFoundation
 import AudioToolbox
 
-class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
-    
-    // Lock-free state management
-    // Using a class for the buffer to allow atomic reference swapping
-    private class SpeechState {
-        let samples: [Int16]
-        let sampleRate: Double
-        var readIndex: Int = 0
-        
-        init(samples: [Int16], sampleRate: Double) {
-            self.samples = samples
-            self.sampleRate = sampleRate
-        }
-    }
-    
-    private var state: SpeechState?
-    private let stateLock = NSLock() // Only used for swapping the state, not in render loop
-    
-    // Build ID to ISO language code mapping
-    private let languageMap: [String: String] = [
+/// The rate this provider declares to the host.
+///
+/// The engine's builds run at 10000, 10800 or 11025 Hz depending on
+/// generation, and the host picks a single output format when it instantiates
+/// the audio unit. Declaring a fixed rate here and resampling on the render
+/// thread keeps playback at the right pitch for every build; 22050 is the
+/// conventional choice for speech providers.
+private let kOutputSampleRate: Double = 22050.0
+
+/// The system-wide voice provider behind iBestSpeech.
+///
+/// VoiceOver loads this as a speech synthesis provider extension. The audio
+/// unit pulls samples on a real-time thread while `synthesizeSpeechRequest`
+/// runs on another, so the render path must never allocate, take a lock, or
+/// block.
+final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
+
+    private static let voiceIdentifierPrefix = "com.devin.ibestspeech."
+
+    /// Build ID to BCP-47 language tag. Every build the library carries must
+    /// appear here or VoiceOver files the voice under the wrong language.
+    private static let languageMap: [String: String] = [
         "1995": "en-US",
-        "1998ENG": "en-US", "1998DUT": "nl-NL", "1998FRN": "fr-FR", "1998GRM": "de-DE", "1998ITL": "it-IT", "1998SPN": "es-ES",
-        "2006ARA": "ar-SA", "2006DUT": "nl-NL", "2006ENG": "en-US", "2006FRE": "fr-FR", "2006GER": "de-DE",
-        "2006GRE": "el-GR", "2006HEB": "he-IL", "2006ITA": "it-IT", "2006JPN": "ja-JP", "2006POL": "pl-PL",
-        "2006POR": "pt-PT", "2006RUS": "ru-RU", "2006SPA": "es-ES"
+        "1998ENG": "en-US", "1998DUT": "nl-NL", "1998FRN": "fr-FR",
+        "1998GRM": "de-DE", "1998ITL": "it-IT", "1998SPN": "es-ES",
+        "2006ARA": "ar-SA", "2006DUT": "nl-NL", "2006ENG": "en-US",
+        "2006FRE": "fr-FR", "2006GER": "de-DE", "2006GRE": "el-GR",
+        "2006HEB": "he-IL", "2006ITA": "it-IT", "2006JPN": "ja-JP",
+        "2006POL": "pl-PL", "2006POR": "pt-PT", "2006RUS": "ru-RU",
+        "2006SPA": "es-ES",
     ]
-    
+
+    // MARK: - Audio unit plumbing
+
+    private var _outputBusses: AUAudioUnitBusArray!
+    private var outputBus: AUAudioUnitBus!
+
+    override init(componentDescription: AudioComponentDescription,
+                  options: AudioComponentInstantiationOptions = []) throws {
+        try super.init(componentDescription: componentDescription, options: options)
+
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: kOutputSampleRate,
+                                         channels: 1) else {
+            throw NSError(domain: NSOSStatusErrorDomain,
+                          code: Int(kAudioUnitErr_FormatNotSupported))
+        }
+        outputBus = try AUAudioUnitBus(format: format)
+        _outputBusses = AUAudioUnitBusArray(audioUnit: self, busType: .output, busses: [outputBus])
+    }
+
+    override var outputBusses: AUAudioUnitBusArray { _outputBusses }
+
+    // MARK: - Render state
+
+    /// One synthesized utterance. `position` is a fractional index into
+    /// `samples` and is advanced only by the render thread.
+    private final class SpeechState {
+        let samples: [Int16]
+        let step: Double          // source samples consumed per output sample
+        var position: Double = 0
+
+        init(samples: [Int16], sourceSampleRate: Double) {
+            self.samples = samples
+            self.step = sourceSampleRate / kOutputSampleRate
+        }
+
+        var isDrained: Bool { position >= Double(samples.count) }
+    }
+
+    private var state: SpeechState?
+    private let stateLock = NSLock()   // guards swaps only; never taken in render
+
+    // MARK: - Voice registration
+
     override var speechVoices: [AVSpeechSynthesisProviderVoice] {
-        let builds = OpenBST.availableBuilds()
-        return builds.map { buildName in
-            let lang = languageMap[buildName] ?? "en-US"
-            return AVSpeechSynthesisProviderVoice(
-                name: "Keynote Gold (\(buildName))",
-                identifier: "com.devin.openbst.\(buildName)",
-                primaryLanguages: [lang],
-                supportedLanguages: [lang]
-            )
-        }
-    }
-    
-    override func synthesizeSpeechRequest(_ speechRequest: AVSpeechSynthesisProviderRequest) {
-        // 1. Voice Identification
-        let voiceID = speechRequest.voice.identifier
-        let buildName = voiceID.replacingOccurrences(of: "com.devin.openbst.", with: "")
-        
-        // 2. SSML Processing
-        // Extract text and simple attributes
-        let (text, pitch, rate) = parseSSML(speechRequest.ssmlRepresentation)
-        
-        // 3. Synthesis
-        guard let bst = OpenBST(build: buildName) else { return }
-        
-        // Apply attributes if parsed from SSML
-        if let p = pitch { bst.set(.pitch, p) }
-        if let r = rate { bst.set(.rate, r) }
-        
-        if let samples = bst.synthesize(text) {
-            // Atomically swap the state to avoid locking in the render loop
-            stateLock.lock()
-            self.state = SpeechState(samples: samples, sampleRate: Double(bst.sampleRate))
-            stateLock.unlock()
-        }
-    }
-    
-    override func cancelSpeechRequest() {
-        stateLock.lock()
-        self.state = nil
-        stateLock.unlock()
-    }
-    
-    // MARK: - Real-time Safe Render Helper
-    
-    func fillBuffer(_ buffer: UnsafeMutablePointer<Float>, frames: Int) -> Int {
-        // Capture current state reference to avoid race during swap
-        // In a true lock-free system we'd use an atomic pointer, but for this 
-        // scale, capturing the reference is safe as the state object is immutable.
-        guard let currentState = self.state else {
-            for i in 0..<frames { buffer[i] = 0 }
-            return 0
-        }
-        
-        var samplesWritten = 0
-        let samples = currentState.samples
-        
-        while samplesWritten < frames && currentState.readIndex < samples.count {
-            buffer[samplesWritten] = Float(samples[currentState.readIndex]) / 32768.0
-            currentState.readIndex += 1
-            samplesWritten += 1
-        }
-        
-        if samplesWritten < frames {
-            for i in samplesWritten..<frames {
-                buffer[i] = 0
+        get {
+            OpenBST.availableBuilds().map { build in
+                let lang = Self.languageMap[build] ?? "en-US"
+                return AVSpeechSynthesisProviderVoice(
+                    name: "Keynote Gold (\(build))",
+                    identifier: Self.voiceIdentifierPrefix + build,
+                    primaryLanguages: [lang],
+                    supportedLanguages: [lang]
+                )
             }
         }
-        
-        return samplesWritten
+        set { /* The host may try to set this; the list is derived, not stored. */ }
     }
-    
-    func getSampleRate() -> Double {
-        return state?.sampleRate ?? 10000.0
+
+    // MARK: - Requests
+
+    override func synthesizeSpeechRequest(_ speechRequest: AVSpeechSynthesisProviderRequest) {
+        let voiceID = speechRequest.voice.identifier
+        guard voiceID.hasPrefix(Self.voiceIdentifierPrefix) else { return }
+        let buildName = String(voiceID.dropFirst(Self.voiceIdentifierPrefix.count))
+
+        let (text, pitch, rate) = Self.parseSSML(speechRequest.ssmlRepresentation)
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            clearState()
+            return
+        }
+        guard let bst = OpenBST(build: buildName) else { return }
+
+        if let pitch { bst.set(.pitch, pitch) }
+        if let rate { bst.set(.rate, rate) }
+
+        guard let samples = bst.synthesize(text), !samples.isEmpty else {
+            clearState()
+            return
+        }
+
+        let newState = SpeechState(samples: samples,
+                                   sourceSampleRate: Double(bst.sampleRate))
+        stateLock.lock()
+        state = newState
+        stateLock.unlock()
     }
-    
-    // MARK: - Private Helpers
-    
-    private func parseSSML(_ ssml: String) -> (text: String, pitch: Int?, rate: Int?) {
-        // Basic SSML Stripping: Remove <...> tags
-        // In a full implementation, we'd use a proper XML parser.
-        // Here we use regex for the "minimum viable" requirement.
-        
-        var pitch: Int? = nil
-        var rate: Int? = nil
-        
-        // Extract pitch (e.g., <prosody pitch="50">)
-        if let pitchMatch = ssml.range(of: "pitch=\"(\d+)\"", options: .regularExpression) {
-            let valStr = ssml[pitchMatch].replacingOccurrences(of: "pitch=\"", with: "").replacingOccurrences(of: "\"", with: "")
-            pitch = Int(valStr)
+
+    override func cancelSpeechRequest() {
+        clearState()
+    }
+
+    private func clearState() {
+        stateLock.lock()
+        state = nil
+        stateLock.unlock()
+    }
+
+    // MARK: - Real-time render path
+
+    override var internalRenderBlock: AUInternalRenderBlock {
+        return { [weak self] actionFlags, _, frameCount, _, outputData, _, _ in
+            guard let self else { return noErr }
+
+            let buffers = UnsafeMutableAudioBufferListPointer(outputData)
+            guard buffers.count > 0,
+                  let raw = buffers[0].mData,
+                  buffers[0].mDataByteSize >= frameCount * UInt32(MemoryLayout<Float>.size) else {
+                return noErr
+            }
+
+            let out = raw.assumingMemoryBound(to: Float.self)
+            let written = self.fillBuffer(out, frames: Int(frameCount))
+
+            // Tell the host this request is spent so it stops pulling.
+            if written < Int(frameCount), self.currentRequestIsDrained {
+                actionFlags.pointee.insert(.offlineUnitRenderAction_Complete)
+            }
+            return noErr
         }
-        
-        // Extract rate (e.g., <prosody rate="120">)
-        if let rateMatch = ssml.range(of: "rate=\"(\d+)\"", options: .regularExpression) {
-            let valStr = ssml[rateMatch].replacingOccurrences(of: "rate=\"", with: "").replacingOccurrences(of: "\"", with: "")
-            rate = Int(valStr)
+    }
+
+    /// True when a request exists and has been fully read out.
+    private var currentRequestIsDrained: Bool {
+        guard let s = state else { return false }
+        return s.isDrained
+    }
+
+    /// Fills `buffer` with resampled samples, silencing the remainder.
+    /// Returns how many frames were written (0 once the request is drained).
+    /// Runs on the audio thread: no allocation, no locks.
+    func fillBuffer(_ buffer: UnsafeMutablePointer<Float>, frames: Int) -> Int {
+        guard frames > 0 else { return 0 }
+
+        guard let s = state else {
+            buffer.update(repeating: 0, count: frames)
+            return 0
         }
-        
-        // Strip all tags to get plain text
+
+        let samples = s.samples
+        let count = samples.count
+        var i = 0
+
+        while i < frames {
+            let pos = s.position
+            if pos >= Double(count) { break }
+
+            let idx = Int(pos)
+            let next = idx + 1 < count ? idx + 1 : idx
+            let frac = Float(pos - Double(idx))
+            let a = Float(samples[idx]) / 32768.0
+            let b = Float(samples[next]) / 32768.0
+
+            buffer[i] = a + (b - a) * frac
+            s.position += s.step
+            i += 1
+        }
+
+        if i < frames {
+            (buffer + i).update(repeating: 0, count: frames - i)
+        }
+        return i
+    }
+
+    // MARK: - SSML
+
+    /// Strips tags to plain text and lifts `rate`/`pitch` if the system sent them.
+    ///
+    /// VoiceOver sends prosody values as percentages (e.g. `rate="150%"`), so a
+    /// trailing `%` is accepted and ignored rather than discarding the value.
+    static func parseSSML(_ ssml: String) -> (text: String, pitch: Int?, rate: Int?) {
+        func extract(_ attribute: String) -> Int? {
+            let pattern = "\(attribute)=\"(\\d+)%?\""
+            guard let match = ssml.range(of: pattern, options: .regularExpression) else {
+                return nil
+            }
+            return Int(ssml[match].filter(\.isNumber))
+        }
+
         let text = ssml.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-        
-        return (text, pitch, rate)
+        return (text, extract("pitch"), extract("rate"))
     }
 }

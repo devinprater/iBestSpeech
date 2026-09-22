@@ -1,30 +1,62 @@
-name: OpenBSTTester
+name: iBestSpeech
 options:
   deploymentTarget: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: LMYZ738293
+    CODE_SIGN_STYLE: Automatic
+    # Only arm64 is supported: the bundled bst tables make the archive large
+    # and there is no 32-bit iOS target left to support.
+    ONLY_ACTIVE_ARCH: YES
 
 targets:
-  OpenBSTTester:
+  iBestSpeech:
     type: application
     platform: iOS
-    sources: [Sources]
+    sources:
+      - Sources
+      - Shared
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.devin.ibestspeech.tester
-      SWIFT_OBJC_BRIDGING_HEADER: Bridging-Header.h
-      HEADER_SEARCH_PATHS: [Frameworks/OpenBST.xcframework/ios-arm64/Headers, Frameworks/OpenBST.xcframework/ios-arm64-simulator/Headers]
-      GENERATE_INFOPLIST_FILE: NO
-      INFOPLIST_FILE: Info/Info.plist
-    frameworks:
-      - Frameworks/OpenBST.xcframework
+      base:
+        PRODUCT_NAME: iBestSpeech
+        PRODUCT_BUNDLE_IDENTIFIER: com.devin.ibestspeech
+        SWIFT_OBJC_BRIDGING_HEADER: Bridging-Header.h
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Info/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        # The bridging header includes bst.h, so clang needs the slice matching
+        # the SDK being built. Listing both slices unconditionally lets the
+        # device headers win for simulator builds and the link then fails.
+        "HEADER_SEARCH_PATHS[sdk=iphoneos*]": $(SRCROOT)/Frameworks/OpenBST.xcframework/ios-arm64/Headers
+        "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]": $(SRCROOT)/Frameworks/OpenBST.xcframework/ios-arm64_x86_64-simulator/Headers
+    dependencies:
+      - target: iBestSpeechProvider
+        embed: true
+        codeSign: true
+      # Must be a dependency, not a top-level `frameworks:` key. The frameworks
+      # key is not part of the XcodeGen spec and is silently ignored, leaving
+      # the library out of the link phase entirely.
+      - framework: Frameworks/OpenBST.xcframework
+        embed: false
 
-  OpenBSTExtension:
+  iBestSpeechProvider:
     type: app-extension
     platform: iOS
-    sources: [OpenBSTExtension/Sources]
+    sources:
+      - OpenBSTExtension/Sources
+      - Shared
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.devin.ibestspeech.extension
-      SWIFT_OBJC_BRIDGING_HEADER: ../Bridging-Header.h
-      HEADER_SEARCH_PATHS: [../Frameworks/OpenBST.xcframework/ios-arm64/Headers, ../Frameworks/OpenBST.xcframework/ios-arm64-simulator/Headers]
-      GENERATE_INFOPLIST_FILE: NO
-      INFOPLIST_FILE: Info/ExtensionInfo.plist
-    frameworks:
-      - ../Frameworks/OpenBST.xcframework
+      base:
+        PRODUCT_NAME: iBestSpeechProvider
+        PRODUCT_BUNDLE_IDENTIFIER: com.devin.ibestspeech.provider
+        SWIFT_OBJC_BRIDGING_HEADER: Bridging-Header.h
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Info/ExtensionInfo.plist
+        SKIP_INSTALL: YES
+        "HEADER_SEARCH_PATHS[sdk=iphoneos*]": $(SRCROOT)/Frameworks/OpenBST.xcframework/ios-arm64/Headers
+        "HEADER_SEARCH_PATHS[sdk=iphonesimulator*]": $(SRCROOT)/Frameworks/OpenBST.xcframework/ios-arm64_x86_64-simulator/Headers
+    dependencies:
+      - framework: Frameworks/OpenBST.xcframework
+        embed: false
