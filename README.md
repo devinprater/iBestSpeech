@@ -159,5 +159,12 @@ Przedzinkowski: its C code is MIT. Its **tables are not** — they are read out
 of Berkeley Speech Technologies' binaries and are Berkeley's work and later
 HumanWare's. The MIT licence covers the code and says nothing about the
 tables. That is why the compiled `.a` files are not committed here: this
-repository carries the iOS integration only. Use the tables where you have the
-right to.
+repository carries the iOS integration only.
+
+The `.ipa` attached to a release, however, does contain those tables, because an
+installable app cannot avoid embedding them — see [LICENSE](LICENSE) and
+[NOTICE.md](NOTICE.md) before you download it. That release is signed ad hoc for
+a specific set of registered devices, so it installs only on those; build from
+source with your own team to run it anywhere else.
+
+Use the tables where you have the right to.
