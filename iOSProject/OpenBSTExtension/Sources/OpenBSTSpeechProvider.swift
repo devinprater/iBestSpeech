@@ -113,7 +113,7 @@ public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
         let voiceID = speechRequest.voice.identifier
         guard let buildName = Self.buildName(from: voiceID) else { return }
 
-        let (text, pitch, rate) = Self.parseSSML(speechRequest.ssmlRepresentation)
+        let (text, pitch, rate) = SSMLText.textAndParameters(from: speechRequest.ssmlRepresentation)
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             clearState()
             return
@@ -217,16 +217,4 @@ public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
     ///
     /// VoiceOver sends prosody values as percentages (e.g. `rate="150%"`), so a
     /// trailing `%` is accepted and ignored rather than discarding the value.
-    static func parseSSML(_ ssml: String) -> (text: String, pitch: Int?, rate: Int?) {
-        func extract(_ attribute: String) -> Int? {
-            let pattern = "\(attribute)=\"(\\d+)%?\""
-            guard let match = ssml.range(of: pattern, options: .regularExpression) else {
-                return nil
-            }
-            return Int(ssml[match].filter(\.isNumber))
-        }
-
-        let text = ssml.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-        return (text, extract("pitch"), extract("rate"))
-    }
 }
