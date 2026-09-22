@@ -152,6 +152,37 @@ iOSProject/
 The shared files live in `Shared/` because the extension needs them too: the
 provider is a separate process and cannot see the app target's sources.
 
+## Sideloading
+
+To install without a developer account — iLoader, AltStore, SideStore, Sideloadly
+— you need an .ipa those tools can re-sign with your own Apple ID. The release
+`.ipa` is not one: it is signed to a specific device list, and they cannot
+re-sign a binary whose entitlements they cannot grant.
+
+```sh
+cd iOSProject
+python3 make_sideload_ipa.py     # -> build/iBestSpeech-sideload.ipa
+```
+
+That builds the app with signing disabled entirely, so the packaged .ipa has no
+signature, no provisioning profile, and nothing to undo before re-signing. It
+also strips the App Group from the entitlements, because **a free Apple ID cannot
+obtain one** — a profile granting it needs a paid account, and the sideloading
+tools reject the .ipa outright. This is the same reason `AltStore` refuses some
+apps and not others.
+
+One caveat, stated rather than buried: **removing the App Group is untested on a
+device.** Nothing in the Swift reads it — the voice list comes from the engine's
+own static build table, not from shared defaults — so it looks like it was
+declared while chasing registration and never used. But it was added at the point
+registration started working, and no run has confirmed the app functions without
+it. If the voices do not appear in Settings after sideloading, that is the first
+suspect: rebuild with `--keep-app-group` on a paid account.
+
+The script leaves `project.yml` alone — it writes a temporary spec beside it,
+generates into a project of its own name, and cleans up — so the repository's
+working configuration is never modified.
+
 ## Licence
 
 The engine is [openbst](https://github.com/Mudb0y/openbst) by Stanislaw
