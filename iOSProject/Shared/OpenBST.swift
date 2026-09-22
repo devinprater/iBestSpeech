@@ -35,23 +35,40 @@ public class OpenBST {
         return Int(bst_get(h, param.rawValue))
     }
 
-    /// Synthesizes `text` and returns the samples, or nil if the build produced none.
-    ///
-    /// bst_say drops whatever does not fit, so the length is taken first and the
-    /// buffer sized to match. The C side may still write fewer samples than
-    /// bst_length predicted; the returned array is trimmed to that count so
-    /// callers never see a tail of silence presented as speech.
+    /// Synthesizes `text` as UTF-8.
     public func synthesize(_ text: String) -> [Int16]? {
-        guard let h = handle else { return nil }
         guard !text.isEmpty else { return nil }
+        return Array(text.utf8).withUnsafeBufferPointer { synthesize(bytes: $0) }
+    }
 
-        return text.withCString { cText in
-            let length = bst_length(h, cText)
+    /// Synthesizes text supplied as raw bytes.
+    ///
+    /// Several builds read a legacy single-byte code page, so the caller encodes
+    /// into that page and hands the bytes over rather than the string: a String
+    /// would go through UTF-8 and the engine would read it as silence.
+    ///
+    /// bst_length is taken first because bst_say drops whatever does not fit, and
+    /// the result is trimmed to the count actually written so a caller never sees
+    /// a tail of silence presented as speech.
+    public func synthesize(bytes: UnsafeBufferPointer<UInt8>) -> [Int16]? {
+        guard let h = handle, !bytes.isEmpty else { return nil }
+
+        // The C API takes a NUL-terminated string and has no length parameter, so
+        // an embedded NUL would silently truncate. Reject rather than half-speak.
+        guard !bytes.contains(0) else { return nil }
+
+        var terminated = [CChar](repeating: 0, count: bytes.count + 1)
+        for (i, b) in bytes.enumerated() { terminated[i] = CChar(bitPattern: b) }
+
+        return terminated.withUnsafeBufferPointer { buf -> [Int16]? in
+            guard let base = buf.baseAddress else { return nil }
+
+            let length = bst_length(h, base)
             guard length > 0 else { return nil }
 
             var pcm = [Int16](repeating: 0, count: Int(length))
-            let written = pcm.withUnsafeMutableBufferPointer { buf in
-                bst_say(h, cText, buf.baseAddress, length)
+            let written = pcm.withUnsafeMutableBufferPointer { out in
+                bst_say(h, base, out.baseAddress, length)
             }
             guard written > 0 else { return nil }
 
@@ -60,6 +77,16 @@ public class OpenBST {
             }
             return pcm
         }
+    }
+
+    /// True when this build produces speech for `bytes`.
+    ///
+    /// Used to decide whether a code-page encoding is usable before committing to
+    /// it: a build handed a script it does not read returns a sample count and
+    /// then all zeros, so a length check alone is not enough.
+    public func producesSpeech(for bytes: UnsafeBufferPointer<UInt8>) -> Bool {
+        guard let samples = synthesize(bytes: bytes), !samples.isEmpty else { return false }
+        return samples.contains { $0 != 0 }
     }
 
     /// The builds this library carries, newest generation first.

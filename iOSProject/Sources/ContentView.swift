@@ -11,7 +11,7 @@ import SwiftUI
 /// of making the user step through five of them.
 struct ContentView: View {
     @StateObject private var audioManager = AudioManager()
-    @State private var text: String = "Hello from iBestSpeech. This is the Keynote Gold voice, running on iOS."
+    @State private var text: String = VoiceCatalog.sample(for: VoiceCatalog.englishBuild)
 
     var body: some View {
         NavigationStack {
@@ -20,13 +20,19 @@ struct ContentView: View {
                     TextField("Text to speak", text: $text, axis: .vertical)
                         .lineLimit(3...6)
                         .accessibilityLabel("Text to speak")
+                        .onChange(of: audioManager.selectedBuild) { _, newBuild in
+                            // Each build reads a different language, and a phrase
+                            // in the wrong script comes back as silence, so the
+                            // sample text follows the selected voice.
+                            text = VoiceCatalog.sample(for: newBuild)
+                        }
                 } header: {
                     label("Preview text")
                 }
 
                 Section {
                     Picker("Voice", selection: $audioManager.selectedBuild) {
-                        ForEach(audioManager.availableBuilds, id: \.self) { build in
+                        ForEach(audioManager.buildChoices, id: \.self) { build in
                             Text(build).tag(build)
                         }
                     }
@@ -56,7 +62,7 @@ struct ContentView: View {
                     Section {
                         Text(error)
                             .foregroundStyle(.red)
-                            .accessibilityLabel("Error: \(error)")
+                            .accessibilityLabel("Note: \(error)")
                     }
                 }
 
@@ -68,7 +74,7 @@ struct ContentView: View {
                 }
 
                 Section {
-                    Text("\(audioManager.availableBuilds.count) engine builds are available. Some builds read only their own writing system.")
+                    Text("\(audioManager.availableBuilds.count) engine builds are available. Where a build cannot read the text it is given, the English voice speaks instead.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } header: {

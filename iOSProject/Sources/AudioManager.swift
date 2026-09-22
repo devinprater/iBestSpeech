@@ -9,6 +9,12 @@ import AVFoundation
 /// exception is not catchable in Swift — it aborts the process. The engine's
 /// builds are mono at 10000/10800/11025 Hz while the node runs at the hardware
 /// format, so every utterance is converted with an AVAudioConverter first.
+///
+/// The engine is started lazily and shut down once idle. An AVAudioEngine left
+/// running holds the audio hardware open and keeps the app's audio session
+/// active for the life of the process, which is felt as lag whenever the main
+/// thread contends with it — most visibly when a twenty-row picker is pushed
+/// and popped.
 @MainActor
 final class AudioManager: ObservableObject {
     private let engine = AVAudioEngine()
@@ -16,77 +22,111 @@ final class AudioManager: ObservableObject {
 
     @Published private(set) var isSpeaking = false
     @Published private(set) var lastError: String?
-    @Published var selectedBuild: String = "2006ENG"
+    @Published private(set) var lastSpokenWith: String?
+    @Published var selectedBuild: String = VoiceCatalog.englishBuild
 
     /// Populated straight from the library, so the picker can never offer a
     /// build the linked engine does not actually carry.
     let availableBuilds: [String] = OpenBST.availableBuilds()
 
+    /// Picker display values, resolved once.
+    ///
+    /// The label carries the language, and looking that up inside the picker body
+    /// re-ran the lookup for all twenty rows on every render. Pushing and popping
+    /// the picker then did twenty dictionary walks per frame, which is what the
+    /// lag in the voice list was.
+    let buildChoices: [String] = VoiceCatalog.all
+        .map(\.build)
+        .filter { OpenBST.availableBuilds().contains($0) }
+
+    private var idleTimer: Task<Void, Never>?
+    private var graphReady = false
+
     init() {
-        activateSession()
-
-        engine.attach(playerNode)
-        // Connect at the mixer's own format. Passing nil leaves the node at
-        // whatever the graph picks, and a later mismatch against a scheduled
-        // buffer is an assertion failure, not an error to handle.
-        let mixerFormat = engine.mainMixerNode.outputFormat(forBus: 0)
-        engine.connect(playerNode, to: engine.mainMixerNode, format: mixerFormat)
-
-        do {
-            try engine.start()
-        } catch {
-            lastError = "Could not start the audio engine: \(error.localizedDescription)"
-        }
-
         #if DEBUG
-        // Headless smoke check: `simctl launch … --selftest-speak` exercises the
-        // playback path without driving the UI, which is how the scheduleBuffer
-        // abort was caught. The result is written to a file so the host can read
-        // it back rather than trusting that stdout was captured.
+        // Headless smoke check: `simctl launch … --selftest-speak` drives the
+        // playback path without the UI, which is how the scheduleBuffer abort was
+        // caught. The result is written to a file the host reads back, rather
+        // than trusting that stdout was captured.
         if CommandLine.arguments.contains("--selftest-speak") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.speak(text: "Self test of the speech engine.")
-                let note = "speak() returned normally; lastError=\(self?.lastError ?? "nil")\n"
+                guard let self else { return }
+                var report = ""
+                for build in ["2006ENG", "2006RUS", "2006GRE", "2006ARA", "2006HEB", "2006JPN"] {
+                    self.lastError = nil
+                    self.speak(text: VoiceCatalog.sample(for: build), build: build)
+                    report += "native \(build) -> \(self.lastSpokenWith ?? "NOTHING")"
+                        + (self.lastError.map { "; note=\($0)" } ?? "") + "\n"
+                }
+                report += "\n-- Latin text handed to every build (expect English fallback, never silence) --\n"
+                for build in VoiceCatalog.all.map(\.build) {
+                    self.lastError = nil
+                    self.speak(text: "The quick brown fox jumps over the lazy dog.", build: build)
+                    let used = self.lastSpokenWith ?? "NOTHING"
+                    let ok = used == build ? "spoke it directly" : "fell back to \(used)"
+                    report += "latin \(build) -> \(ok)"
+                        + (self.lastError.map { "; note=\($0)" } ?? "") + "\n"
+                }
                 let url = URL.documentsDirectory.appending(path: "selftest.txt")
-                try? note.write(to: url, atomically: true, encoding: .utf8)
-                NSLog("[selftest] %@", note)
+                try? report.write(to: url, atomically: true, encoding: .utf8)
+                NSLog("[selftest]\n%@", report)
             }
         }
         #endif
     }
 
+    // MARK: - Playback
+
     func speak(text: String) {
+        speak(text: text, build: selectedBuild)
+    }
+
+    func speak(text: String, build: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             lastError = "There is no text to speak."
             return
         }
 
-        guard let bst = OpenBST(build: selectedBuild) else {
-            lastError = "Could not open the \(selectedBuild) voice."
+        let samples: [Int16]
+        let rate: Int
+        let usedBuild: String
+
+        switch synthesize(trimmed, build: build) {
+        case .success(let out):
+            samples = out.samples
+            rate = out.rate
+            usedBuild = build
+        case .needsEnglishFallback:
+            // This build cannot read the script it was handed; English beats the
+            // silence it would otherwise produce.
+            guard build != VoiceCatalog.englishBuild,
+                  case .success(let out) = synthesize(trimmed, build: VoiceCatalog.englishBuild)
+            else {
+                lastError = "The \(build) voice cannot read that text, and English produced no audio either."
+                return
+            }
+            samples = out.samples
+            rate = out.rate
+            usedBuild = VoiceCatalog.englishBuild
+            lastError = "The \(build) voice only reads its own script, so this was spoken with English."
+        case .failure(let message):
+            lastError = message
             return
         }
 
-        guard let pcm = bst.synthesize(trimmed), !pcm.isEmpty else {
-            lastError = "The \(selectedBuild) voice produced no audio for that text."
-            return
-        }
-
-        guard let buffer = playbackBuffer(from: pcm, sampleRate: Double(bst.sampleRate)) else {
+        guard !samples.isEmpty,
+              let buffer = playbackBuffer(from: samples, sampleRate: Double(rate))
+        else {
             if lastError == nil { lastError = "Could not prepare an audio buffer." }
             return
         }
 
-        if !engine.isRunning {
-            do {
-                try engine.start()
-            } catch {
-                lastError = "The audio engine is not running: \(error.localizedDescription)"
-                return
-            }
-        }
+        guard startEngineIfNeeded() else { return }
 
-        lastError = nil
+        lastSpokenWith = usedBuild
+        if usedBuild == build { lastError = nil }
+
         playerNode.stop()
         isSpeaking = true
 
@@ -94,6 +134,7 @@ final class AudioManager: ObservableObject {
             // Fires on an audio thread; hop back before touching published state.
             Task { @MainActor in
                 self?.isSpeaking = false
+                self?.scheduleIdleShutdown()
             }
         }
         playerNode.play()
@@ -102,9 +143,98 @@ final class AudioManager: ObservableObject {
     func stop() {
         playerNode.stop()
         isSpeaking = false
+        scheduleIdleShutdown()
     }
 
-    // MARK: - Helpers
+    // MARK: - Synthesis and script handling
+
+    private struct Utterance {
+        let samples: [Int16]
+        let rate: Int
+    }
+
+    private enum SynthesisOutcome {
+        case success(Utterance)
+        case needsEnglishFallback
+        case failure(String)
+    }
+
+    private func synthesize(_ text: String, build: String) -> SynthesisOutcome {
+        guard let info = VoiceCatalog.info(for: build) else {
+            return .failure("Unknown voice \(build).")
+        }
+        guard let bst = OpenBST(build: build) else {
+            return .failure("Could not open the \(build) voice.")
+        }
+        let rate = bst.sampleRate
+
+        // A build that reads Latin takes the string as UTF-8.
+        guard let codePage = info.codePage else {
+            guard let samples = bst.synthesize(text), !samples.isEmpty else {
+                return .failure("The \(build) voice produced no audio.")
+            }
+            return .success(Utterance(samples: samples, rate: rate))
+        }
+
+        // Otherwise the build's own code page is tried first: that is how its
+        // original was driven and it gives the closest output. A build handed a
+        // script it does not read returns a sample count and then all zeros, so
+        // the result is checked for actual signal, not just for a length.
+        if let bytes = text.encoded(as: codePage), !bytes.isEmpty {
+            let samples = Array(bytes).withUnsafeBufferPointer { buf -> [Int16]? in
+                bst.producesSpeech(for: buf) ? bst.synthesize(bytes: buf) : nil
+            }
+            if let samples, !samples.isEmpty {
+                return .success(Utterance(samples: samples, rate: rate))
+            }
+        }
+
+        // No representation in that code page, or the build read it as silence.
+        return .needsEnglishFallback
+    }
+
+    // MARK: - Engine lifecycle
+
+    private func startEngineIfNeeded() -> Bool {
+        if engine.isRunning { return true }
+
+        activateSession()
+
+        if !graphReady {
+            // Connect at the mixer's own format. Passing nil leaves the node at
+            // whatever the graph picks, and a mismatch against a scheduled buffer
+            // is an assertion failure rather than an error to handle.
+            engine.attach(playerNode)
+            let mixerFormat = engine.mainMixerNode.outputFormat(forBus: 0)
+            engine.connect(playerNode, to: engine.mainMixerNode, format: mixerFormat)
+            graphReady = true
+        }
+
+        do {
+            engine.prepare()
+            try engine.start()
+            return true
+        } catch {
+            lastError = "Could not start the audio engine: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// Releases the audio hardware after a short idle so the app stops competing
+    /// with the main thread while nothing is playing.
+    private func scheduleIdleShutdown() {
+        idleTimer?.cancel()
+        idleTimer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self, !self.isSpeaking else { return }
+                self.engine.stop()
+                try? AVAudioSession.sharedInstance()
+                    .setActive(false, options: .notifyOthersOnDeactivation)
+            }
+        }
+    }
 
     private func activateSession() {
         do {
@@ -118,8 +248,8 @@ final class AudioManager: ObservableObject {
 
     /// Converts the engine's mono 16-bit samples into the player node's format.
     ///
-    /// The returned buffer is guaranteed to match the node's output format, which
-    /// is the precondition `scheduleBuffer` enforces.
+    /// The returned buffer matches the node's output format, which is the
+    /// precondition `scheduleBuffer` enforces.
     private func playbackBuffer(from pcm: [Int16], sampleRate: Double) -> AVAudioPCMBuffer? {
         guard sampleRate > 0,
               let sourceFormat = AVAudioFormat(standardFormatWithSampleRate: sampleRate,
@@ -134,6 +264,10 @@ final class AudioManager: ObservableObject {
         }
         source.frameLength = AVAudioFrameCount(pcm.count)
 
+        // The node's format is only known once the graph exists.
+        if !graphReady {
+            guard startEngineIfNeeded() else { return nil }
+        }
         let targetFormat = playerNode.outputFormat(forBus: 0)
         guard targetFormat.sampleRate > 0, targetFormat.channelCount > 0 else {
             lastError = "The audio output is unavailable."
