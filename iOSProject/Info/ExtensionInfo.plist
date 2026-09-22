@@ -22,10 +22,43 @@
     <string>1</string>
     <key>NSExtension</key>
     <dict>
-        <key>NSExtensionPointIdentifier</key>
-        <string>com.apple.speech-synthesis-provider</string>
-        <key>NSExtensionPrincipalClass</key>
-        <string>OpenBSTSpeechProvider</string>
+    	<!-- A speech synthesis provider is an Audio Unit extension, so the point
+    	     is com.apple.AudioUnit, NOT com.apple.speech-synthesis-provider.
+    	     Declaring the speech point makes the system never load it. -->
+    	<key>NSExtensionPointIdentifier</key>
+    	<string>com.apple.AudioUnit</string>
+    	<!-- Must be an AUAudioUnitFactory that vends the unit, not the
+    	     AVSpeechSynthesisProviderAudioUnit subclass itself. A Swift class's
+    	     ObjC name is module-qualified, hence $(PRODUCT_MODULE_NAME). -->
+    	<key>NSExtensionPrincipalClass</key>
+    	<string>$(PRODUCT_MODULE_NAME).AudioUnitFactory</string>
+    	<key>NSExtensionAttributes</key>
+    	<dict>
+    		<key>AudioComponents</key>
+    		<array>
+    			<dict>
+    				<key>description</key>
+    				<string>BeSTspeech / Keynote Gold voices</string>
+    				<key>manufacturer</key>
+    				<string>DvnP</string>
+    				<key>name</key>
+    				<string>iBestSpeech: Keynote Gold</string>
+    				<key>sandboxSafe</key>
+    				<true/>
+    				<key>subtype</key>
+    				<string>ibst</string>
+    				<key>tags</key>
+    				<array>
+    					<string>Speech Synthesizer</string>
+    				</array>
+    				<!-- 'ausp' is kAudioUnitType_SpeechSynthesizer -->
+    				<key>type</key>
+    				<string>ausp</string>
+    				<key>version</key>
+    				<integer>65536</integer>
+    			</dict>
+    		</array>
+    	</dict>
     </dict>
 </dict>
 </plist>

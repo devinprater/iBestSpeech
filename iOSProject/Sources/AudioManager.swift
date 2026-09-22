@@ -43,13 +43,19 @@ final class AudioManager: ObservableObject {
     private var graphReady = false
 
     init() {
+        // Tell the system to rebuild its voice list. Without this the provider's
+        // voices are not enumerated, however correct the extension's plist is:
+        // the system caches the voice list and only rebuilds it when asked.
+        AVSpeechSynthesisProviderVoice.updateSpeechVoices()
+
         #if DEBUG
         // Headless smoke check: `simctl launch … --selftest-speak` drives the
         // playback path without the UI, which is how the scheduleBuffer abort was
         // caught. The result is written to a file the host reads back, rather
         // than trusting that stdout was captured.
         if CommandLine.arguments.contains("--selftest-speak") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1))
                 guard let self else { return }
                 var report = ""
                 for build in ["2006ENG", "2006RUS", "2006GRE", "2006ARA", "2006HEB", "2006JPN"] {
@@ -66,6 +72,24 @@ final class AudioManager: ObservableObject {
                     let ok = used == build ? "spoke it directly" : "fell back to \(used)"
                     report += "latin \(build) -> \(ok)"
                         + (self.lastError.map { "; note=\($0)" } ?? "") + "\n"
+                }
+
+                // The decisive check: does the system list our provider's voices?
+                // Apple's documentation is explicit that the system "takes up to
+                // 30 seconds to refresh the list of available voices" after
+                // updateSpeechVoices(), so this waits well past that rather than
+                // concluding too early.
+                try? await Task.sleep(for: .seconds(40))
+                report += "\n-- system voices from speech-synthesis providers --\n"
+                let systemVoices = AVSpeechSynthesisVoice.speechVoices()
+                let ours = systemVoices.filter { $0.identifier.hasPrefix("com.devin.ibestspeech.") }
+                report += "total system voices: \(systemVoices.count)\n"
+                report += "iBestSpeech voices: \(ours.count)\n"
+                for v in ours.prefix(5) {
+                    report += "  \(v.identifier) name=\(v.name) lang=\(v.language)\n"
+                }
+                if ours.isEmpty {
+                    report += "  (none — the extension is not being loaded)\n"
                 }
                 let url = URL.documentsDirectory.appending(path: "selftest.txt")
                 try? report.write(to: url, atomically: true, encoding: .utf8)

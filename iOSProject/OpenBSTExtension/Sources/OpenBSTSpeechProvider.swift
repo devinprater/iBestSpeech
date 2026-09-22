@@ -17,7 +17,7 @@ private let kOutputSampleRate: Double = 22050.0
 /// unit pulls samples on a real-time thread while `synthesizeSpeechRequest`
 /// runs on another, so the render path must never allocate, take a lock, or
 /// block.
-final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
+public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
 
     private static let voiceIdentifierPrefix = "com.devin.ibestspeech."
 
@@ -39,8 +39,8 @@ final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
     private var _outputBusses: AUAudioUnitBusArray!
     private var outputBus: AUAudioUnitBus!
 
-    override init(componentDescription: AudioComponentDescription,
-                  options: AudioComponentInstantiationOptions = []) throws {
+    public override init(componentDescription: AudioComponentDescription,
+                         options: AudioComponentInstantiationOptions = []) throws {
         try super.init(componentDescription: componentDescription, options: options)
 
         guard let format = AVAudioFormat(standardFormatWithSampleRate: kOutputSampleRate,
@@ -52,7 +52,7 @@ final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
         _outputBusses = AUAudioUnitBusArray(audioUnit: self, busType: .output, busses: [outputBus])
     }
 
-    override var outputBusses: AUAudioUnitBusArray { _outputBusses }
+    public override var outputBusses: AUAudioUnitBusArray { _outputBusses }
 
     // MARK: - Render state
 
@@ -76,7 +76,7 @@ final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
 
     // MARK: - Voice registration
 
-    override var speechVoices: [AVSpeechSynthesisProviderVoice] {
+    public override var speechVoices: [AVSpeechSynthesisProviderVoice] {
         get {
             OpenBST.availableBuilds().map { build in
                 let lang = Self.languageMap[build] ?? "en-US"
@@ -93,7 +93,7 @@ final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
 
     // MARK: - Requests
 
-    override func synthesizeSpeechRequest(_ speechRequest: AVSpeechSynthesisProviderRequest) {
+    public override func synthesizeSpeechRequest(_ speechRequest: AVSpeechSynthesisProviderRequest) {
         let voiceID = speechRequest.voice.identifier
         guard voiceID.hasPrefix(Self.voiceIdentifierPrefix) else { return }
         let buildName = String(voiceID.dropFirst(Self.voiceIdentifierPrefix.count))
@@ -120,7 +120,7 @@ final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
         stateLock.unlock()
     }
 
-    override func cancelSpeechRequest() {
+    public override func cancelSpeechRequest() {
         clearState()
     }
 
@@ -132,7 +132,7 @@ final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
 
     // MARK: - Real-time render path
 
-    override var internalRenderBlock: AUInternalRenderBlock {
+    public override var internalRenderBlock: AUInternalRenderBlock {
         return { [weak self] actionFlags, _, frameCount, _, outputData, _, _ in
             guard let self else { return noErr }
 
