@@ -12,9 +12,7 @@ import Foundation
 ///     -o /tmp/ssmltests && /tmp/ssmltests
 ///
 /// Worth testing because every failure here is silent: nothing errors, the voice
-/// still speaks, it just says the wrong thing. A tag deleted rather than
-/// replaced with a space joins the words around it, and a decoded-looking entity
-/// passes markup through to an engine that reads bytes.
+/// still speaks, it just says the wrong thing or nothing at all.
 
 @main
 struct SSMLTextTests {
@@ -33,34 +31,139 @@ struct SSMLTextTests {
         }
     }
 
+    static func expectInt(_ got: Int?, _ expected: Int?, _ label: String) {
+        checks += 1
+        if got == expected {
+            print("PASS  \(label)")
+        } else {
+            failures.append("\(label): got \(got.map(String.init) ?? "nil"), expected \(expected.map(String.init) ?? "nil")")
+            print("FAIL  \(label)  (got \(got.map(String.init) ?? "nil"), expected \(expected.map(String.init) ?? "nil"))")
+        }
+    }
+
+    static func expectPause(_ ssml: String, _ expected: Double, _ label: String) {
+        checks += 1
+        let got = SSMLText.parse(ssml).totalPause
+        if abs(got - expected) < 0.001 {
+            print("PASS  \(label)")
+        } else {
+            failures.append("\(label): got \(got), expected \(expected)")
+            print("FAIL  \(label)  (got \(got), expected \(expected))")
+        }
+    }
+
     static func main() {
         print("-- the reported bug: a tag between two words must leave a space --")
         expect(#"<speak>iBestSpeech<break time="100ms"/>recently updated</speak>"#,
                "iBestSpeech recently updated",
                "break between words keeps them separate")
-
-        // Stripping tags to "" rather than " " produced exactly this:
-        // "iBestSpeechrecently" — one nonsense word.
         expect(#"<speak>iBestSpeech<break time="100ms"/>recently</speak>"#,
                "iBestSpeech recently",
                "the exact failing case")
 
-        print("\n-- shapes the system sends --")
+        print("\n-- the silence bug: adjacent numbers produce no audio at all --")
+        expect("<speak>555 1234</speak>", "555, 1234", "two numbers are separated")
+        expect("<speak>10 20 30</speak>", "10, 20, 30", "a run of numbers is separated")
+        expect("<speak>The score was 3 4 5.</speak>", "The score was 3, 4, 5.",
+               "numbers inside a sentence")
+        expect("<speak>Room 101 202</speak>", "Room 101, 202", "numbers after a word")
+        expect("<speak>Version 2 0 2 6</speak>", "Version 2, 0, 2, 6", "version digits")
+        expect("<speak>Call 555.</speak>", "Call 555.", "a lone number is untouched")
+        expect("<speak>555-1234</speak>", "555-1234", "a hyphenated number is untouched")
+        expect("<speak>The year 1995 was a long time ago.</speak>",
+               "The year 1995 was a long time ago.", "an isolated year is untouched")
+
+        print("\n-- elements Apple and the W3C reference define --")
         expect(#"<speak><prosody rate="50%">Hello</prosody> <prosody pitch="+10%">world</prosody></speak>"#,
-               "Hello world",
-               "prosody elements")
-        expect(#"<speak>Hello<mark name="x"/> world</speak>"#,
-               "Hello world",
-               "mark element")
+               "Hello world", "prosody elements")
+        expect(#"<speak>Hello<mark name="x"/> world</speak>"#, "Hello world", "mark element")
         expect("<speak>Normal <emphasis level=\"strong\">bold</emphasis> text</speak>",
-               "Normal bold text",
-               "emphasis element")
-        expect(#"<speak><voice name="x">Words</voice></speak>"#,
-               "Words",
-               "voice element")
-        expect(#"<speak><prosody rate="80%">A sentence.</prosody></speak>"#,
-               "A sentence.",
-               "rate attribute")
+               "Normal bold text", "emphasis element")
+        expect(#"<speak><voice name="x">Words</voice></speak>"#, "Words", "voice element")
+        expect("<speak><p>First</p><s>Second</s></speak>", "First Second", "p and s elements")
+        expect("<speak><lang xml:lang=\"fr\">Bonjour</lang></speak>", "Bonjour", "lang element")
+        expect("<speak>Hi <w>there</w> you</speak>", "Hi there you", "w element")
+        expect("<speak><prosody rate=\"80%\">A sentence.</prosody></speak>",
+               "A sentence.", "rate attribute")
+
+        print("\n-- pause elements become silence, not text --")
+        expectPause(#"<speak>a<break time="1s"/>b</speak>"#, 1.0, "time in seconds")
+        expectPause(#"<speak>a<break time="500ms"/>b</speak>"#, 0.5, "time in milliseconds")
+        expectPause(#"<speak>a<break time="1.5s"/>b</speak>"#, 1.5, "fractional seconds")
+        expectPause(#"<speak>a<break time="250"/>b</speak>"#, 0.25, "bare number is milliseconds")
+        expectPause(#"<speak>a<break strength="strong"/>b</speak>"#, 0.5, "strength strong")
+        expectPause(#"<speak>a<break strength="none"/>b</speak>"#, 0.0, "strength none")
+        expectPause(#"<speak>a<break strength="x-weak"/>b</speak>"#, 0.05, "strength x-weak")
+        expectPause(#"<speak>a<break/>b</speak>"#, 0.25, "no attribute uses the SSML default")
+        // A malformed time must not stall the speech queue.
+        checks += 1
+        let huge = SSMLText.parse(#"<speak><break time="9999s"/>x</speak>"#).totalPause
+        if huge <= 10 { print("PASS  an absurd break time is capped  (\(huge)s)") }
+        else { failures.append("break cap: got \(huge)"); print("FAIL  an absurd break time is capped") }
+
+        print("\n-- markers come back in order --")
+        checks += 1
+        let marked = SSMLText.parse(#"<speak>a<mark name="one"/>b<mark name="two"/>c</speak>"#)
+        if marked.bookmarks == ["one", "two"] { print("PASS  bookmarks in order") }
+        else {
+            failures.append("bookmarks: got \(marked.bookmarks)")
+            print("FAIL  bookmarks in order  (got \(marked.bookmarks))")
+        }
+
+        print("\n-- per-piece prosody: one value cannot describe a whole utterance --")
+        checks += 1
+        let twoPieces = SSMLText.parse(
+            #"<speak><prosody rate="25%">slow</prosody> then <prosody rate="75%">quick</prosody></speak>"#)
+        let rates: [Int] = twoPieces.pieces.compactMap { piece in
+            if case .speech(_, _, let rate, _) = piece { return rate }
+            return nil
+        }
+        // 25% and 75% of normal sit either side of neutral 50, spread by the half
+        // factor that keeps SSML's wider range inside the engine's usable band.
+        if rates == [13, 38] { print("PASS  each piece keeps its own rate  (\(rates))") }
+        else {
+            failures.append("per-piece rate: got \(rates), expected [13, 38]")
+            print("FAIL  each piece keeps its own rate  (got \(rates), expected [13, 38])")
+        }
+
+        print("\n-- prosody values map onto VoiceOver's scale --")
+        expectInt(SSMLText.parse(#"<speak><prosody pitch="x-low">a</prosody></speak>"#).firstPitch,
+                  15, "pitch x-low")
+        expectInt(SSMLText.parse(#"<speak><prosody pitch="high">a</prosody></speak>"#).firstPitch,
+                  75, "pitch high")
+        expectInt(SSMLText.parse(#"<speak><prosody pitch="+20%">a</prosody></speak>"#).firstPitch,
+                  70, "relative pitch")
+        expectInt(SSMLText.parse(#"<speak><prosody rate="x-slow">a</prosody></speak>"#).firstRate,
+                  10, "rate x-slow")
+        expectInt(SSMLText.parse(#"<speak><prosody rate="100%">a</prosody></speak>"#).firstRate,
+                  50, "rate 100% is neutral")
+        expectInt(SSMLText.parse(#"<speak><prosody rate="200%">a</prosody></speak>"#).firstRate,
+                  100, "rate 200% is faster")
+        expectInt(SSMLText.parse(#"<speak><prosody rate="50%">a</prosody></speak>"#).firstRate,
+                  25, "rate 50% is slower")
+        // Volume is read, and an absent one stays nil rather than defaulting to 0.
+        expectInt(SSMLText.parse(#"<speak>plain</speak>"#).firstRate, nil, "absent rate stays nil")
+
+        print("\n-- say-as --")
+        // Letters already read as names when space separated, so they stay that
+        // way — measured at 1.6s for "H E L L O" against 1.0s for "Hello".
+        expect(#"<speak><say-as interpret-as="characters">HELLO</say-as></speak>"#,
+               "H E L L O", "characters are separated so the engine spells them")
+        // Digits are different: space separated they produce no audio at all, so
+        // the comma that separates adjacent numbers is what makes them speakable.
+        expect(#"<speak><say-as interpret-as="digits">123</say-as></speak>"#,
+               "1, 2, 3", "digits are separated")
+        // The engine normalizes numbers, dates and currency itself, so these pass
+        // through unchanged rather than being mangled by an approximation.
+        expect(#"<speak><say-as interpret-as="date">2026-09-22</say-as></speak>"#,
+               "2026-09-22", "date is left to the engine")
+        expect(#"<speak><say-as interpret-as="number">42</say-as></speak>"#,
+               "42", "number is left to the engine")
+
+        print("\n-- phoneme and lexicon --")
+        expect(#"<speak><phoneme alphabet="ipa" ph="təˈmeɪtoʊ">tomato</phoneme></speak>"#,
+               "tomato", "phoneme speaks its text content, not the phonemes")
+        expect(#"<speak><lexicon uri="x.lex"/>Hello</speak>"#, "Hello", "lexicon is skipped")
 
         print("\n-- entities must be resolved, not passed through --")
         expect("Hello&#160;world", "Hello world", "non-breaking space (decimal)")
@@ -83,8 +186,7 @@ struct SSMLTextTests {
         expect("<!-- a comment -->Hello", "Hello", "comment")
         expect("<!-- a > b -->Hello", "Hello", "comment containing an angle bracket")
         expect(#"<sub alias="World Health Organization">WHO</sub>"#,
-               "World Health Organization",
-               "sub speaks the alias, not the abbreviation")
+               "World Health Organization", "sub speaks the alias, not the abbreviation")
         expect("<speak>  spaced   out  </speak>", "spaced out", "whitespace collapsed")
         expect("Hello , world", "Hello, world", "no gap before punctuation")
 
@@ -92,33 +194,18 @@ struct SSMLTextTests {
         expect("Just words.", "Just words.", "no markup at all")
         expect("", "", "empty")
         expect("The quick brown fox jumps over the lazy dog.",
-               "The quick brown fox jumps over the lazy dog.",
-               "a plain sentence")
+               "The quick brown fox jumps over the lazy dog.", "a plain sentence")
+        expect("<speak>The quick brown fox jumps over the lazy dog.</speak>",
+               "The quick brown fox jumps over the lazy dog.", "the usual speak wrapper")
 
-        print("\n-- pitch and rate --")
-        checks += 1
-        let params = SSMLText.speechParameters(
-            from: #"<speak><prosody pitch="+15%" rate="70%">x</prosody></speak>"#)
-        if params.pitch == 15 && params.rate == 70 {
-            print("PASS  pitch and rate read")
-        } else {
-            failures.append("pitch/rate: got \(params)")
-            print("FAIL  pitch and rate read (got \(params))")
-        }
-
-        checks += 1
-        let none = SSMLText.speechParameters(from: "<speak>plain</speak>")
-        if none.pitch == nil && none.rate == nil {
-            print("PASS  absent pitch and rate stay nil")
-        } else {
-            failures.append("absent pitch/rate: got \(none)")
-            print("FAIL  absent pitch and rate stay nil")
-        }
+        print("\n-- malformed markup must not crash or hang --")
+        expect("<speak>unterminated", "unterminated", "unterminated tag")
+        expect("<!-- unterminated comment", "", "unterminated comment")
+        expect("<speak><prosody rate=\"50%\">unclosed</speak>", "unclosed", "unclosed element")
+        expect("<><>", "", "empty tags")
 
         print("\n\(checks - failures.count)/\(checks) passed")
-        if failures.isEmpty {
-            exit(0)
-        }
+        if failures.isEmpty { exit(0) }
         print("\nFAILURES:")
         for failure in failures { print("  \(failure)") }
         exit(1)

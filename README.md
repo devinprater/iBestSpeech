@@ -18,9 +18,53 @@ generations, each exposed as its own voice:
   German, Greek, Hebrew, Italian, Japanese, Polish, Portuguese, Russian,
   Spanish.
 
-Note that the 2006 Russian build reads text in KOI8-R, which is what its
-original did. Handed Latin text it returns a plausible sample count and then
-all silence, so it needs Cyrillic to say anything.
+Each build reads text as bytes in a legacy single-byte code page, which is what
+its original did. Measured against the built library:
+
+- **2006RUS** reads CP1251. Latin text returns a plausible sample count and then
+  all silence, so it needs Cyrillic.
+- **2006ARA** reads CP1256, and **2006GRE** reads CP1253; both also read Latin.
+- **2006HEB** reads Latin — it speaks Hebrew phonetics written in Latin letters,
+  which is how the engine's own suite drives it.
+- The rest read Latin.
+
+Where a build cannot read the script it is given, the English voice speaks
+instead, and the app says so rather than going quiet.
+
+## Speech handling
+
+The system hands a speech provider SSML, and this resolves it rather than
+stripping it:
+
+- Tags become a **space**, never nothing. Deleting one joins the words it sat
+  between: `iBestSpeech<break/>recently` came out "iBestSpeechrecently".
+- Entities are decoded, and typographic characters folded to ASCII, because the
+  engine reads a single-byte code page and cannot represent a curly quote or an
+  em dash.
+- `prosody` pitch, rate and volume, per piece, so a nested element adjusts only
+  its own span.
+- `break` becomes real silence, from `time` or `strength`, capped so a malformed
+  value cannot stall the queue.
+- `mark` is reported back to the system as a marker, so the host can act on it.
+- `say-as interpret-as="characters"` and `digits` are spelled out. The engine
+  already normalizes numbers, currency, dates and times itself, so the other
+  modes pass through unchanged rather than being mangled by an approximation.
+- `sub` speaks its alias, `phoneme` its text content, and `lexicon` is skipped.
+
+**Two numbers in a row with only a space between them produce no audio at all**,
+across every build — "555 1234", "10 20 30", "Room 101 202". The engine's own
+test corpus never covers the case. A comma is inserted between them, which the
+engine reads as a short pause; a pause between numbers is natural speech anyway,
+and the alternative is silence.
+
+Rate and pitch are translated to the engine's settings, which differ from
+VoiceOver's in ways that are not obvious:
+
+- The engine's `rate` scales utterance **duration**, so larger is slower, while
+  VoiceOver's 0 is slowest. Passing the value through inverted the control.
+- Pitch runs the same way in both, but the engine's floor is not a low pitch —
+  it leaves the voiced range and buzzes, so the lower half is compressed onto
+  the engine's usable minimum.
 
 ## Building
 
@@ -44,11 +88,39 @@ slice as `arm64 + x86_64`, so the project builds both on Apple silicon and on
 Intel Macs. The XCFramework is not checked in — it is large, it is regenerated
 by that script, and the compiled tables are not ours to redistribute (below).
 
+Re-run `xcodegen generate` after adding or moving any source file: targets take
+their file list at generate time, so a new file is otherwise simply absent and
+the build fails with "cannot find X in scope" for code that is plainly there.
+
+## Tests
+
+Three suites, each compiled together with the file it checks, so none of them can
+drift from the shipping code.
+
+```sh
+cd iOSProject
+
+# SSML parsing, 69 checks
+swiftc -parse-as-library Shared/SSMLText.swift Tests/SSMLTextTests.swift \
+  -o /tmp/ssmltests && /tmp/ssmltests
+
+# rate and pitch mapping, 15 checks
+swiftc -parse-as-library Shared/EngineParameters.swift Tests/EngineParameterTests.swift \
+  -o /tmp/paramtests && /tmp/paramtests
+
+# voice identifier parsing, 9 checks
+swift iOSProject/Tests/VoiceIdentifierTests.swift
+```
+
+Every one of these covers behaviour that fails **silently** — nothing errors, the
+voice just says the wrong thing or nothing at all — which is why they are worth
+more here than they would be elsewhere.
+
 ### Checking that it actually speaks
 
-Linking is not the same as speaking: a build can succeed and still emit
-silence. This exercises the engine directly and measures how much of each
-build's output is non-zero.
+Linking is not the same as speaking: a build can succeed and still emit silence.
+This exercises the engine directly and measures how much of each build's output
+is non-zero.
 
 ```sh
 python3 smoke_test.py --upstream ~/openbst
@@ -64,16 +136,20 @@ team provisioning profile covers both the app and the extension.
 
 ```
 iOSProject/
-  Sources/                  the app: engine audition screen
-  Shared/OpenBST.swift      Swift wrapper over the C API, used by both targets
-  OpenBSTExtension/Sources/ the AVSpeechSynthesisProviderAudioUnit
-  Info/                     app and extension Info.plists
-  build_frameworks.py       cross-compiles the engine into an XCFramework
-  smoke_test.py             verifies the engine produces audio
-  project.yml               XcodeGen spec
+  Sources/                    the app: engine audition screen
+  Shared/OpenBST.swift        Swift wrapper over the C API, used by both targets
+  Shared/SSMLText.swift       SSML into text, pauses and markers
+  Shared/EngineParameters.swift  VoiceOver's pitch and rate onto the engine's
+  Shared/VoiceCatalog.swift   per-build language, code page and sample phrase
+  OpenBSTExtension/Sources/   the AVSpeechSynthesisProviderAudioUnit
+  Info/                       app and extension Info.plists
+  Tests/                      the three suites above
+  build_frameworks.py         cross-compiles the engine into an XCFramework
+  smoke_test.py               verifies the engine produces audio
+  project.yml                 XcodeGen spec
 ```
 
-The Swift wrapper lives in `Shared/` because the extension needs it too: the
+The shared files live in `Shared/` because the extension needs them too: the
 provider is a separate process and cannot see the app target's sources.
 
 ## Licence
