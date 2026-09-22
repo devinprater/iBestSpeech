@@ -190,6 +190,18 @@ struct SSMLTextTests {
         expect("<speak>  spaced   out  </speak>", "spaced out", "whitespace collapsed")
         expect("Hello , world", "Hello, world", "no gap before punctuation")
 
+        print("\n-- a clock time: the colon makes it silent, so it is rewritten --")
+        expect("<speak>It is 3:20 PM.</speak>", "It is 3.20 PM.", "3:20 PM")
+        expect("<speak>12:00</speak>", "12.00", "12:00")
+        expect("<speak>14:30</speak>", "14.30", "24-hour time")
+        expect("<speak>3:20:45</speak>", "3.20.45", "seconds too")
+        // Colons that are not clock times must be left alone — these already work
+        // in the engine, and rewriting them would be vandalism.
+        expect("<speak>Note: hello</speak>", "Note: hello", "a colon after a word")
+        expect("<speak>Chapter 3: page 5.</speak>", "Chapter 3: page 5.",
+               "a colon after a number but not between two")
+        expect("<speak>http://x.com</speak>", "http://x.com", "a URL")
+
         print("\n-- plain text must pass through untouched --")
         expect("Just words.", "Just words.", "no markup at all")
         expect("", "", "empty")

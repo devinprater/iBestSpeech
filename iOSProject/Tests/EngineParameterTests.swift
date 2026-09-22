@@ -92,13 +92,15 @@ struct EngineParameterTests {
                EngineParameters.engineRate(forVoiceOver: 1.0),
                "100 and 1.0 are the same point")
 
-        print("\n-- pitch stays the same way round, above the voiced floor --")
-        expect(EngineParameters.enginePitch(forVoiceOver: 0), 25,
+        print("\n-- pitch stays the same way round, and neutral is the engine's own --")
+        expect(EngineParameters.enginePitch(forVoiceOver: 0), 50,
                "VoiceOver 0 is the engine's voiced floor, not 0")
-        expect(EngineParameters.enginePitch(forVoiceOver: 50), 50,
-               "VoiceOver 50 is unchanged")
-        expect(EngineParameters.enginePitch(forVoiceOver: 100), 100,
-               "VoiceOver 100 is unchanged")
+        // The bug: neutral mapped to the engine's 50, which is 56 Hz, nearly an
+        // octave below the 97 Hz the engine uses when untouched.
+        expect(EngineParameters.enginePitch(forVoiceOver: 50), 80,
+               "VoiceOver 50 is the engine's own default, not 50")
+        expect(EngineParameters.enginePitch(forVoiceOver: 100), 140,
+               "VoiceOver 100 is the engine's ceiling")
 
         checks += 1
         let low = EngineParameters.enginePitch(forVoiceOver: 0)
@@ -112,8 +114,8 @@ struct EngineParameterTests {
         }
 
         print("\n-- out-of-range input is clamped, not wrapped --")
-        expect(EngineParameters.enginePitch(forVoiceOver: -50), 25, "negative pitch clamps")
-        expect(EngineParameters.enginePitch(forVoiceOver: 500), 100, "excess pitch clamps")
+        expect(EngineParameters.enginePitch(forVoiceOver: -50), 50, "negative pitch clamps")
+        expect(EngineParameters.enginePitch(forVoiceOver: 500), 140, "excess pitch clamps")
         expect(EngineParameters.engineRate(forVoiceOver: -1), 300, "negative rate clamps slow")
         expect(EngineParameters.engineRate(forVoiceOver: 200), -100, "excess rate clamps fast")
 

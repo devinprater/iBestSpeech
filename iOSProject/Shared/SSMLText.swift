@@ -371,11 +371,39 @@ public enum SSMLText {
         var text = decodeEntities(raw)
         text = collapseWhitespace(text)
         text = closeGapsBeforePunctuation(text)
+        text = fixTimes(text)
         // `say-as` before the number separation: spelling a word out inserts
         // spaces that would otherwise look like adjacent numbers.
         text = applySayAs(text, mode: sayAs)
         text = separateAdjacentNumbers(text)
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Rewrites a clock time's colon as a full stop, so the engine can say it.
+    ///
+    /// A colon between two digits makes the engine produce **no audio at all**,
+    /// on every build. Measured on 1995, 1998ENG and 2006ENG: "3:20 PM",
+    /// "12:00", "14:30", "3:20:45" and "It is 3:20 PM." are silent, while
+    /// "3.20 PM" and "3-20 PM" speak on all three. The engine has a tokeniser
+    /// rule for a digit-flanked colon, and it does not produce a time the number
+    /// reader accepts.
+    ///
+    /// A full stop is not a guess: it is one of the two forms that work, and it
+    /// is what a time reads as to the engine's own number handling. Only a colon
+    /// with digits immediately either side is touched, so "Note: hello",
+    /// "Chapter 3: page 5" and "http://x.com" are unaffected — and those already
+    /// work.
+    static func fixTimes(_ text: String) -> String {
+        let characters = Array(text)
+        var output: [Character] = []
+        output.reserveCapacity(characters.count)
+
+        for (index, character) in characters.enumerated() {
+            let flankedByDigits = index > 0 && index + 1 < characters.count
+                && characters[index - 1].isNumber && characters[index + 1].isNumber
+            output.append(character == ":" && flankedByDigits ? "." : character)
+        }
+        return String(output)
     }
 
     /// `say-as` handling.
