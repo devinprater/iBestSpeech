@@ -138,10 +138,23 @@ jobs:
           # covers the tables, which dominate the binary.
           LIB="$GITHUB_WORKSPACE/iOSProject/Frameworks/OpenBST.xcframework/ios-arm64/libbst_device.a"
           test -f "$LIB" || { echo "::error::the device archive is missing"; exit 1; }
-          # llvm-nm, not nm: GNU nm cannot read Mach-O and prints "file format
-          # not recognized", which a careless pipeline turns into "0 symbols"
-          # and a false failure on a working artifact.
-          DEFINED=$(llvm-nm "$LIB" 2>/dev/null | grep -cE '\bT _?bst_')
+
+          # Find an nm that can actually read this file, and prove it can before
+          # trusting it. `llvm-nm` does not exist on the macOS runner, and with
+          # set -e + pipefail an absent command makes the assignment exit the
+          # step immediately -- with its stderr suppressed, so the step failed
+          # with no message at all. Probe instead of assuming.
+          NM=""
+          for cand in llvm-nm nm /usr/bin/llvm-nm /usr/bin/nm; do
+            if command -v "$cand" >/dev/null 2>&1 && "$cand" "$LIB" >/dev/null 2>&1; then
+              NM="$cand"
+              break
+            fi
+          done
+          test -n "$NM" || { echo "::error::no nm on this runner can read the archive"; exit 1; }
+          echo "reading the archive with: $NM"
+
+          DEFINED=$("$NM" "$LIB" | grep -cE '\bT _?bst_' || true)
           echo "engine functions defined in the linked archive: $DEFINED"
           test "$DEFINED" -ge 8 \
             || { echo "::error::the linked archive defines only $DEFINED engine functions"; exit 1; }
@@ -150,7 +163,7 @@ jobs:
           # If any were missing the link would have failed, so this is a cheap
           # confirmation that the archive is the one the app needs.
           for sym in bst_open bst_say bst_close bst_get bst_set bst_length; do
-            llvm-nm "$LIB" 2>/dev/null | grep -qE "\bT _?$sym\b" \
+            "$NM" "$LIB" | grep -qE "\bT _?$sym\b" \
               || { echo "::error::the archive does not define $sym"; exit 1; }
           done
           echo "the archive defines the entry points the app calls"
