@@ -405,6 +405,26 @@ struct SSMLTextTests {
         // hard g and an "ee" ending, which the single word "stanggy" gives as
         // one token with one stress -- right for a surname.
         expect("<speak>Stange</speak>", "stanggy", "Stange keeps its g")
+        // An interior dot silences the whole utterance on every build, so a
+        // letter-dot-letter that is not an abbreviation chain becomes "dot".
+        // The dictionary's "ai" entry turns the exposed TLD into A I ("ai"
+        // alone reads as "aye").
+        expect("<speak>claude.ai</speak>", "claude dot a i",
+               "claude.ai says its dot")
+        expect("<speak>9to5google.com</speak>", "9to5google dot com",
+               "dotted domains say their dot")
+        expect("<speak>a.b</speak>", "a dot b", "bare letter dots expand")
+        expect("<speak>visit google.com today</speak>", "visit google.com today",
+               "mid-piece dots already speak")
+        expect("<speak>http://x.com</speak>", "http://x.com",
+               "URL dots already speak")
+        expect("<speak>e.g.</speak>", "e.g.",
+               "abbreviation chains are untouched")
+        expect("<speak>U.S.</speak>", "U.S.",
+               "U.S. has no dictionary entry and stays as written")
+        expect("<speak>Version 2026.38.0</speak>", "Version 2026.38.0",
+               "digit dots are untouched")
+        expect("<speak>3.5</speak>", "3.5", "decimals are untouched")
         // A display name: the ordinary word "pizza" (usual ts) plus "cat".
         expect("<speak>PizzaCat</speak>", "pizza cat", "PizzaCat splits")
         // A comma the user wrote ended the text on the thirteen 2006 builds:

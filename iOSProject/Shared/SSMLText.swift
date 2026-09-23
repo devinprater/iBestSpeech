@@ -385,6 +385,9 @@ public enum SSMLText {
         // spaces that would otherwise look like adjacent numbers.
         text = applySayAs(text, mode: sayAs)
         // After `say-as`, so a term it spelled out is not rewritten again.
+        // Before pronunciations, so the words this exposes ("ai" in
+        // "claude.ai") still pass through the dictionary.
+        text = expandInteriorDots(text)
         text = applyPronunciations(text)
         text = separateAdjacentNumbers(text)
         text = softenCommas(text)
@@ -891,6 +894,53 @@ public enum SSMLText {
     /// grouped number and "5,19" is a list the engine patch reads, and
     /// rewriting either one's comma goes silent. Measured: "alpha 1,000 omega"
     /// must keep its comma, while "alpha 1:000 omega" reads as six words.
+    /// Rewrites a leading dot-domain as the word "dot", unless it belongs
+    /// to an abbreviation chain or a URL.
+    ///
+    /// A dot with a letter on each side **at the start of the piece**
+    /// silences the whole utterance on every build: "claude.ai", "a.b",
+    /// "google.com" and "9to5google.com" all produce zero samples on 1995,
+    /// 1998ENG and 2006ENG, while "claude dot a i" and "google dot com" speak
+    /// on all three. The same dot mid-piece is harmless -- "visit google.com
+    /// today" and even "http://x.com" speak as written, the dot a silent
+    /// separator -- so only a dot whose letter-run is the first thing in the
+    /// piece is rewritten. A chain that ends in a dot ("e.g.", "U.S.", "i.e.")
+    /// also speaks as written, so a dot whose following letter-run meets
+    /// another dot before whitespace or end is left alone. Digit dots ("3.5",
+    /// "2026.38.0") are never touched: the engine reads those itself.
+    static func expandInteriorDots(_ text: String) -> String {
+        let characters = Array(text)
+        var output = ""
+        output.reserveCapacity(text.count + 8)
+        for (index, character) in characters.enumerated() {
+            guard character == ".",
+                  index > 0, index + 1 < characters.count,
+                  characters[index - 1].isLetter,
+                  characters[index + 1].isLetter
+            else { output.append(character); continue }
+            // An abbreviation chain ("e.g.", "U.S."): another dot comes first.
+            var next = index + 1
+            while next < characters.count, characters[next].isLetter { next += 1 }
+            guard next >= characters.count || characters[next] != "." else {
+                output.append(character); continue
+            }
+            // Mid-piece dots and URL dots already speak: the dot's run must be
+            // the first thing in the piece -- only whitespace may precede it.
+            var back = index - 1
+            while back >= 0,
+                  characters[back].isLetter || characters[back].isNumber {
+                back -= 1
+            }
+            while back >= 0, characters[back].isWhitespace { back -= 1 }
+            if back < 0 {
+                output.append(" dot ")
+            } else {
+                output.append(character)
+            }
+        }
+        return output
+    }
+
     static func softenCommas(_ text: String) -> String {
         let characters = Array(text)
         var output = ""

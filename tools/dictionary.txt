@@ -167,6 +167,7 @@ Firewall	fire wall
 Screenshot	screen shot
 Touchscreen	touch screen
 AI	A I
+ai	a i
 IoT	eye oh tee
 OSHA	oh shah
 etc.	et cetera

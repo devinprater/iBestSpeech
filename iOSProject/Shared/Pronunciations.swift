@@ -157,5 +157,6 @@ enum Pronunciations {
         ("5G", "five gee"),
         ("4G", "four gee"),
         ("AI", "A I"),
+        ("ai", "a i"),
     ]
 }
