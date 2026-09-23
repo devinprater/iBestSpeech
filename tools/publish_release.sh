@@ -29,7 +29,11 @@ EXPECTED_NAME="iBestSpeech-${TAG#v}-sideload.ipa"
 
 # Tag lookup is used ONLY to resolve the numeric release ID. Its embedded
 # assets field is unreliable; never make publish/delete decisions from it.
-RELEASE_ID=$(gh api "repos/$REPO/releases/tags/$TAG" --jq .id 2>/dev/null || true)
+if RELEASE_ID=$(gh api "repos/$REPO/releases/tags/$TAG" --jq .id 2>/dev/null); then
+    :
+else
+    RELEASE_ID=""
+fi
 if [[ -z "$RELEASE_ID" ]]; then
     if [[ -z "$NOTES" ]]; then
         echo "release $TAG does not exist (verify-only mode)" >&2; exit 1
