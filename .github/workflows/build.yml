@@ -1,0 +1,115 @@
+name: build
+
+# Everything here needs a Mac: the C engine is cross-compiled for iOS, the
+# Swift layers are compiled against the iOS SDK, and the XCFramework is assembled
+# by xcodebuild. The engine tests are the interesting part on this runner,
+# because they exercise the two faults fixed in
+# Patches/openbst-clock-times.patch -- every one of which is silent, so they are
+# invisible to a build that merely succeeds.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # Pinned so a change upstream cannot silently alter what this workflow
+  # measured. Bump deliberately, and re-run the engine tests, whose expected
+  # sample counts are tied to it.
+  OPENBST_COMMIT: a151e78f66009bc74367974d14476061f3552346
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the engine at the pinned commit, and patch it
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/Mudb0y/openbst "$RUNNER_TEMP/openbst"
+          git -C "$RUNNER_TEMP/openbst" checkout --quiet "$OPENBST_COMMIT"
+          # The patch is the reason clock times speak at all. Verify it applied
+          # by asking git, not by reading the output.
+          git -C "$RUNNER_TEMP/openbst" apply Patches/openbst-clock-times.patch
+          git -C "$RUNNER_TEMP/openbst" diff --quiet src/tokenise.c src/text.c \
+            && { echo "::error::patch applied but the sources are unchanged"; exit 1; }
+          echo "engine at $(git -C "$RUNNER_TEMP/openbst" rev-parse --short HEAD), patched"
+
+      - name: Engine regression tests (host, no Xcode)
+        run: |
+          set -euo pipefail
+          # These fail on the unpatched engine, so they are the check that the
+          # patch is doing what it claims. Run them before the long build.
+          python3 iOSProject/engine_tests.py --upstream "$RUNNER_TEMP/openbst"
+
+      - name: Confirm the tests are load-bearing
+        run: |
+          set -euo pipefail
+          # Revert the patch and require the tests to FAIL. Without this, a
+          # test that has quietly stopped exercising anything would keep
+          # passing and nobody would know.
+          git -C "$RUNNER_TEMP/openbst" apply --reverse Patches/openbst-clock-times.patch
+          if python3 iOSProject/engine_tests.py --upstream "$RUNNER_TEMP/openbst" >/dev/null 2>&1; then
+            echo "::error::engine tests pass on the UNPATCHED engine, so they are not testing the patch"
+            exit 1
+          fi
+          echo "engine tests fail without the patch, as they should"
+          git -C "$RUNNER_TEMP/openbst" apply Patches/openbst-clock-times.patch
+
+      - name: Engine smoke test (every build produces samples)
+        run: |
+          set -euo pipefail
+          python3 iOSProject/smoke_test.py --upstream "$RUNNER_TEMP/openbst"
+
+      - name: Build the XCFramework
+        working-directory: iOSProject
+        run: |
+          set -euo pipefail
+          python3 build_frameworks.py --upstream "$RUNNER_TEMP/openbst"
+          test -d Frameworks/OpenBST.xcframework
+
+      - name: Swift tests
+        run: |
+          set -euo pipefail
+          # These need no Xcode project: each is compiled together with the file
+          # under test, so it cannot drift from what ships.
+          swiftc -parse-as-library \
+            iOSProject/Shared/SSMLText.swift \
+            iOSProject/Tests/SSMLTextTests.swift \
+            -o "$RUNNER_TEMP/ssmltests"
+          "$RUNNER_TEMP/ssmltests"
+
+          swiftc -parse-as-library \
+            iOSProject/Shared/EngineParameters.swift \
+            iOSProject/Tests/EngineParameterTests.swift \
+            -o "$RUNNER_TEMP/paramtests"
+          "$RUNNER_TEMP/paramtests"
+
+          swift iOSProject/Tests/VoiceIdentifierTests.swift
+
+      - name: Generate the Xcode project and build the app
+        working-directory: iOSProject
+        run: |
+          set -euo pipefail
+          brew install --quiet xcodegen
+          xcodegen generate
+          # Signing off: this checks that the app and its extension compile and
+          # link against the XCFramework. Signing is a separate concern and
+          # needs a certificate this runner does not have.
+          xcodebuild build \
+            -project iBestSpeech.xcodeproj \
+            -scheme iBestSpeech \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: Upload the XCFramework
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenBST-xcframework
+          path: iOSProject/Frameworks/OpenBST.xcframework
+          retention-days: 14
