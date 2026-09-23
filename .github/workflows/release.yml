@@ -209,41 +209,4 @@ jobs:
           set -euo pipefail
           IPA="$RUNNER_TEMP/iBestSpeech-${VERSION}-sideload.ipa"
           NOTES="$GITHUB_WORKSPACE/ReleaseNotes/${GITHUB_REF_NAME}.md"
-          test -f "$NOTES" || { echo "::error::no release notes at $NOTES"; exit 1; }
-
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "$IPA" --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" "$IPA" \
-              --title "iBestSpeech ${VERSION}" \
-              --notes-file "$NOTES"
-          fi
-
-          # "published" is not proof. A tag push can leave a release already in
-          # place with the asset NAME reserved and NOTHING attached; the upload
-          # then fails 422 and a following --clobber can exit 0 having attached
-          # nothing. v1.0.5 went out EMPTY this way, reporting success. So read
-          # the asset back and compare the bytes on the release to the bytes
-          # that were built.
-          NAME="iBestSpeech-${VERSION}-sideload.ipa"
-          count() { gh release view "$GITHUB_REF_NAME" --json assets -q '.assets | length'; }
-          if [ "$(count)" = "0" ]; then
-            echo "::warning::the release has no asset -- re-creating it with the .ipa"
-            gh release delete "$GITHUB_REF_NAME" --yes --cleanup-tag=false
-            gh release create "$GITHUB_REF_NAME" "$IPA" \
-              --title "iBestSpeech ${VERSION}" \
-              --notes-file "$NOTES" --verify-tag
-          fi
-          test "$(count)" != "0" || { echo "::error::the release went out with no asset"; exit 1; }
-
-          LOCAL=$(shasum -a 256 "$IPA" | cut -d' ' -f1)
-          rm -rf "$RUNNER_TEMP/verify"
-          gh release download "$GITHUB_REF_NAME" -p "$NAME" -D "$RUNNER_TEMP/verify" --clobber
-          THERE=$(shasum -a 256 "$RUNNER_TEMP/verify/$NAME" | cut -d' ' -f1)
-          test "$LOCAL" = "$THERE" || {
-            echo "::error::the asset on the release is not the .ipa that was built"
-            echo "built: $LOCAL ($(wc -c < "$IPA") bytes)"
-            echo "there: $THERE"
-            exit 1
-          }
-          echo "published $GITHUB_REF_NAME -- $NAME, $(wc -c < "$IPA") bytes, sha256 verified"
+          bash "$GITHUB_WORKSPACE/tools/publish_release.sh" "$GITHUB_REF_NAME" "$IPA" "$NOTES"
