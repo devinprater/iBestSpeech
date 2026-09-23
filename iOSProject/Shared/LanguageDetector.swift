@@ -37,16 +37,31 @@ public enum LanguageDetector {
         "ja": "2006JPN",
     ]
 
+    /// The languages that share the Latin alphabet. A detection of one of
+    /// these is a guess about shared words, never proof.
+    private static let latinLanguages: Set<String> = [
+        "en", "de", "fr", "es", "it", "nl", "pt", "pl",
+    ]
+
     /// The build to speak `text` with, or nil to keep the voice that was asked
     /// for.
     ///
     /// - Parameter current: the language the requested voice already speaks. A
     ///   detection that agrees with it is not a switch, and returning nil there
     ///   keeps this from doing work for nothing.
+    ///
+    /// An English voice never switches on Latin-script text. The eight Latin
+    /// languages share one alphabet, so any such detection is a guess about
+    /// words they share -- "photos" is French for "photos", and reading the
+    /// Photos heading in a French voice is exactly the wrong call. A wrong
+    /// guess changes the voice the user hears, which is worse than no switch.
+    /// A unique script (Cyrillic, Greek, Arabic, Hebrew, kana/kanji) is proof,
+    /// not a guess, and still switches.
     public static func buildToSpeak(_ text: String, insteadOf current: String) -> String? {
         guard let detected = language(of: text) else { return nil }
         let currentBase = base(current)
         guard detected != currentBase else { return nil }
+        if currentBase == "en" && latinLanguages.contains(detected) { return nil }
         return preferredBuilds[detected]
     }
 

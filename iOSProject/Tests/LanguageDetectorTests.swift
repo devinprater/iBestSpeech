@@ -144,6 +144,48 @@ enum LanguageDetectorTests {
             failures.append("English in an English voice was treated as a switch")
             print("FAIL  English in an English voice was treated as a switch")
         }
+        // Reported: the "Photos" heading was read in a French voice, because
+        // "photos" is a French word and the only one in the line. Latin-script
+        // text in an English voice stays in that voice: a Latin detection is
+        // a guess about shared words, never proof.
+        checks += 1
+        if LanguageDetector.buildToSpeak("photos", insteadOf: "en-US") == nil {
+            print("PASS  Photos in an English voice is not a switch")
+        } else {
+            failures.append("Photos in an English voice was treated as a switch")
+            print("FAIL  Photos in an English voice was treated as a switch")
+        }
+        // Even a genuine French sentence stays English in an English voice...
+        checks += 1
+        if LanguageDetector.buildToSpeak("Le chat est dans la maison et il ne veut pas sortir",
+                                         insteadOf: "en-US") == nil {
+            print("PASS  French in an English voice is not a switch")
+        } else {
+            failures.append("French in an English voice was treated as a switch")
+            print("FAIL  French in an English voice was treated as a switch")
+        }
+        // ...while a unique script still switches: Greek and Japanese join
+        // the existing Russian case.
+        for (text, build, label) in [("Γεια σου, τι κάνεις", "2006GRE", "Greek"),
+                                     ("これはテストです", "2006JPN", "Japanese")] {
+            checks += 1
+            if LanguageDetector.buildToSpeak(text, insteadOf: "en-US") == build {
+                print("PASS  \(label) text picks the \(label) build")
+            } else {
+                failures.append("\(label) text did not pick \(build)")
+                print("FAIL  \(label) text did not pick \(build)")
+            }
+        }
+        // And switching between non-English voices still works: French text
+        // asked for a German voice picks the French build.
+        checks += 1
+        if LanguageDetector.buildToSpeak("Le chat est dans la maison et il ne veut pas sortir",
+                                         insteadOf: "de-DE") == "2006FRE" {
+            print("PASS  French in a German voice still switches")
+        } else {
+            failures.append("French in a German voice no longer switches")
+            print("FAIL  French in a German voice no longer switches")
+        }
 
         print("\n\(checks - failures.count)/\(checks) passed")
         if failures.isEmpty { exit(0) }
