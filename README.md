@@ -276,6 +276,35 @@ The script leaves `project.yml` alone — it writes a temporary spec beside it,
 generates into a project of its own name, and cleans up — so the repository's
 working configuration is never modified.
 
+## Releasing
+
+```sh
+python3 iOSProject/bump_version.py 1.0.2      # both plists, together
+$EDITOR ReleaseNotes/v1.0.2.md                # what changed, honestly
+git commit -am "Version 1.0.2" && git push
+git tag v1.0.2 && git push origin v1.0.2
+```
+
+Pushing the tag runs `.github/workflows/release.yml`, which builds the engine
+with the patch applied, runs the engine tests, builds the XCFramework, packages
+the sideloadable `.ipa`, verifies it, and attaches it to a GitHub Release.
+
+Three things about that workflow are deliberate:
+
+- **The version in the two plists is bumped by a script, not by hand.** The app
+  and the extension must agree; iOS refuses to load an extension whose version
+  does not match its container.
+- **The `.ipa` is verified as a *sideloadable* artifact**, not merely as a zip:
+  no provisioning profile, no code signature, the provider extension embedded,
+  both binaries arm64 for iOS rather than for a simulator, and the engine's
+  symbols actually present. A green build of an app with no engine in it would
+  otherwise ship happily.
+- **`workflow_dispatch` builds and uploads the `.ipa` as an artifact without
+  publishing anything.** Do that first when changing the packaging: inspect the
+  artifact, then push the tag. The tag path also requires `ReleaseNotes/v<tag>.md`
+  to exist, so a release cannot go out without notes.
+
+
 ## Licence
 
 The engine is [openbst](https://github.com/Mudb0y/openbst) by Stanislaw

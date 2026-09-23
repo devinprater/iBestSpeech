@@ -1,0 +1,182 @@
+name: release
+
+# Cut a release: build the unsigned, re-signable .ipa on a Mac runner and attach
+# it to a GitHub Release.
+#
+# The engine patch is applied here for the same reason it is in build.yml -- the
+# faults this release is about are in the engine, so an .ipa built from an
+# unpatched engine would ship the very faults it exists to fix.
+#
+# workflow_dispatch builds the .ipa and uploads it as an artifact WITHOUT
+# publishing anything, so the package can be inspected before it goes public.
+# A v* tag builds it and creates the release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  # Pinned so a release is reproducible and the expected sample counts in
+  # engine_tests.py stay tied to what was actually shipped.
+  OPENBST_COMMIT: a151e78f66009bc74367974d14476061f3552346
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the engine at the pinned commit, and patch it
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/Mudb0y/openbst "$RUNNER_TEMP/openbst"
+          git -C "$RUNNER_TEMP/openbst" checkout --quiet "$OPENBST_COMMIT"
+          cd "$RUNNER_TEMP/openbst"
+          git apply "$GITHUB_WORKSPACE/Patches/openbst-clock-times.patch"
+          git diff --quiet src/tokenise.c src/text.c \
+            && { echo "::error::patch applied but the sources are unchanged"; exit 1; }
+          echo "engine at $(git rev-parse --short HEAD), patched"
+
+      - name: Engine regression tests
+        run: |
+          set -euo pipefail
+          # Never ship an .ipa whose engine has not been shown to read times.
+          python3 "$GITHUB_WORKSPACE/iOSProject/engine_tests.py" \
+            --upstream "$RUNNER_TEMP/openbst"
+
+      - name: Build the XCFramework
+        working-directory: iOSProject
+        run: |
+          set -euo pipefail
+          python3 build_frameworks.py --upstream "$RUNNER_TEMP/openbst"
+          test -d Frameworks/OpenBST.xcframework
+
+      - name: Build the sideloadable .ipa
+        working-directory: iOSProject
+        run: |
+          set -euo pipefail
+          brew install --quiet xcodegen
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info/Info.plist)"
+          test -n "$VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          python3 make_sideload_ipa.py \
+            --out "$RUNNER_TEMP/iBestSpeech-${VERSION}-sideload.ipa"
+
+      - name: Verify the .ipa before it goes anywhere
+        run: |
+          set -euo pipefail
+          IPA="$RUNNER_TEMP/iBestSpeech-${VERSION}-sideload.ipa"
+          test -s "$IPA" || { echo "::error::no .ipa was produced"; exit 1; }
+
+          # The property the whole artifact exists for: a sideloading tool can
+          # only re-sign a binary that carries no signature and no profile of its
+          # own. Re-checked here rather than trusting the build step.
+          if unzip -l "$IPA" | grep -q 'embedded.mobileprovision'; then
+            echo "::error::the .ipa carries a provisioning profile; it cannot be re-signed"
+            exit 1
+          fi
+          if unzip -l "$IPA" | grep -q '_CodeSignature'; then
+            echo "::error::the .ipa carries a code signature; it cannot be re-signed"
+            exit 1
+          fi
+
+          # The provider extension is where the voices come from. An .ipa without
+          # it installs and then has no voices at all.
+          unzip -l "$IPA" | grep -q 'PlugIns/iBestSpeechProvider.appex/iBestSpeechProvider' \
+            || { echo "::error::the provider extension is not embedded"; exit 1; }
+
+          rm -rf "$RUNNER_TEMP/inspect" && mkdir -p "$RUNNER_TEMP/inspect"
+          unzip -q "$IPA" -d "$RUNNER_TEMP/inspect"
+          APP="$RUNNER_TEMP/inspect/Payload/iBestSpeech.app"
+          BIN="$APP/iBestSpeech"
+          EXT="$APP/PlugIns/iBestSpeechProvider.appex/iBestSpeechProvider"
+          test -f "$BIN" || { echo "::error::the app binary is missing"; exit 1; }
+          test -f "$EXT" || { echo "::error::the extension binary is missing"; exit 1; }
+
+          for f in "$BIN" "$EXT"; do
+            BASE=$(basename "$f")
+            SIZE=$(stat -f%z "$f")
+
+            # Real arm64 Mach-O. A simulator slice would install nowhere.
+            otool -hv "$f" | grep -q 'ARM64' \
+              || { echo "::error::$BASE is not an arm64 binary"; exit 1; }
+
+            # Built for iOS, not for a simulator. otool has printed both a number
+            # and a name for this across versions, so accept either: platform 2
+            # is PLATFORM_IOS and 7 is the simulator.
+            LC=$(otool -l "$f")
+            if ! echo "$LC" | grep -A4 LC_BUILD_VERSION | grep -qiE 'platform +2\b|platform IOS\b'; then
+              echo "::error::$BASE was not built for iOS, only for a simulator"
+              echo "$LC" | grep -A4 LC_BUILD_VERSION
+              exit 1
+            fi
+
+            # A shell of an app with no engine in it would still be a valid zip.
+            # The engine's tables make the binary large; this catches a build
+            # that silently linked nothing.
+            test "$SIZE" -gt 400000 \
+              || { echo "::error::$BASE is only ${SIZE} bytes -- the engine is not in it"; exit 1; }
+
+            # Engine symbols must actually be present. A verification step that
+            # reports success for an empty binary is worse than none.
+            nm -a "$f" 2>/dev/null | grep -q 'bst_' \
+              || { echo "::error::$BASE links no engine symbols"; exit 1; }
+
+            echo "$BASE: arm64 iOS, ${SIZE} bytes, engine symbols present"
+          done
+
+          # Every non-system dependency must resolve, or the app installs and
+          # then dies at launch. Collect into a file, then fail on a non-empty
+          # one: an `exit 1` inside a pipeline runs in a subshell and would NOT
+          # fail this step.
+          UNRESOLVED="$RUNNER_TEMP/unresolved.txt"
+          : > "$UNRESOLVED"
+          for f in "$BIN" "$EXT"; do
+            otool -L "$f" | tail -n +2 | awk '{print $1}' \
+              | grep -v '^/usr/lib/' \
+              | grep -v '^/System/Library/' \
+              | grep -v '^@rpath/' \
+              | grep -v '^@executable_path/' \
+              | grep -v '^@loader_path/' \
+              | grep -v '^$' \
+              | sed "s|^|$(basename "$f") -> |" >> "$UNRESOLVED" || true
+          done
+          if [ -s "$UNRESOLVED" ]; then
+            echo "::error::binaries depend on libraries outside the system:"
+            cat "$UNRESOLVED"
+            exit 1
+          fi
+
+          echo "version: $VERSION"
+          echo "ipa size: $(stat -f%z "$IPA") bytes"
+          echo "no profile, no signature, extension embedded, engine linked"
+
+      - name: Upload the .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: iBestSpeech-${{ env.VERSION }}-sideload
+          path: ${{ runner.temp }}/iBestSpeech-${{ env.VERSION }}-sideload.ipa
+          retention-days: 30
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          IPA="$RUNNER_TEMP/iBestSpeech-${VERSION}-sideload.ipa"
+          NOTES="$GITHUB_WORKSPACE/ReleaseNotes/${GITHUB_REF_NAME}.md"
+          test -f "$NOTES" || { echo "::error::no release notes at $NOTES"; exit 1; }
+
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$IPA" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$IPA" \
+              --title "iBestSpeech ${VERSION}" \
+              --notes-file "$NOTES"
+          fi
+          echo "published $GITHUB_REF_NAME"

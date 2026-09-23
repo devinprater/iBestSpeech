@@ -1,0 +1,10 @@
+# The canonical checkout is on Linux. Keep text files as they are committed, so
+# copying a file from the Windows working copy cannot flip every line ending and
+# bury a real change in a whole-file diff.
+* text=auto eol=lf
+*.plist text eol=lf
+*.md text eol=lf
+*.swift text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.patch -text
