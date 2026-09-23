@@ -204,7 +204,9 @@ public enum LanguageDetector {
         return best.language
     }
 
-    private static func base(_ language: String) -> String {
+    /// The comparable form of a language code: "en-US" and "en" are the same
+    /// language, and the catalogue uses the region form.
+    static func base(_ language: String) -> String {
         language.split(separator: "-").first.map(String.init) ?? language
     }
 }

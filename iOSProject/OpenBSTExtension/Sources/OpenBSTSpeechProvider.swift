@@ -161,8 +161,12 @@ public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
                     ?? buildName
 
                 if wantBuild != currentBuild {
-                    currentBuild = wantBuild
-                    currentHandle = engineHandle(for: wantBuild)
+                    // A build whose framework is not in the bundle has no voice;
+                    // fall back to the requested one rather than drop the words.
+                    let handle = engineHandle(for: wantBuild)
+                        ?? (wantBuild == buildName ? nil : engineHandle(for: buildName))
+                    currentBuild = handle == nil ? nil : wantBuild
+                    currentHandle = handle
                 }
                 guard let bst = currentHandle else { continue }
 
