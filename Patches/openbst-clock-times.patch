@@ -35,7 +35,17 @@ separator in it is read rather than dropped.
      is left alone for a real grouped number; it is the runs that are not
      grouped numbers that no longer take the rest of the sentence with them.
 
-  4. The 1998 English module's digit-name, tens and teens table addresses are
+  5. A decimal whose whole part is longer than three digits -- "1234.5",
+     "2026.38.0", the shape of an App Store version -- was rejected the same
+     way and was silent on 19 of 20 builds, taking the rest of the utterance
+     with it: "Version 2026.38.0 tail words here" made no sound at all. The
+     whole part is now read as one number and the fraction spelled, which is
+     what the fraction code already does for a short whole part ("123.45" is
+     byte-identical before and after); anything past a second stop is given
+     back, so "2026.38.0" ends "... point three eight" and ".0" is read on
+     its own. A comma anywhere in the token keeps the old path.
+
+  6. The 1998 English module's digit-name, tens and teens table addresses are
      NOT changed, and neither is the Arabic and Japanese num_silent flag.
      tests/golden.txt is the original binaries' own answers, and the pinned
      tree reproduces all 4906 of them exactly; moving any of those addresses
@@ -46,7 +56,7 @@ Apply from the root of an openbst checkout:
     git apply Patches/openbst-clock-times.patch
 
 diff --git a/src/tokenise.c b/src/tokenise.c
-index 32bc8fa..a33cac0 100644
+index 32bc8fa..f1804f9 100644
 --- a/src/tokenise.c
 +++ b/src/tokenise.c
 @@ -221,6 +221,10 @@ static int row(const bst_tok *t, int i, int *state, unsigned *handler, int *next
@@ -109,7 +119,7 @@ index 32bc8fa..a33cac0 100644
      bst_say_number(t, t->ring + t->start, n);
      if (t->money) say_currency(t, t->ring + t->start, n);
      t->prevkind = t->kind;
-@@ -695,10 +728,69 @@ static void ordinal_emit(bst_tok *t) {
+@@ -695,10 +728,107 @@ static void ordinal_emit(bst_tok *t) {
     The first group may be one to three digits and every later group is three;
     what follows the last group, if anything, is the decimal separator and the
     digits after it are spelled. */
@@ -175,6 +185,44 @@ index 32bc8fa..a33cac0 100644
 +       A run with no comma at all is not this function's business and is left
 +       to the rest of the handlers exactly as it was. */
 +    if (has_comma(t) && !is_grouped(t)) return say_groups(t);
++
++    /* A decimal whose whole part is longer than three digits -- "1234.5",
++       "2026.38.0" -- is not a grouped number, but the loop below only lets a
++       first group of three through and rejects this one without consuming the
++       token, so no handler is left and the whole utterance makes no sound at
++       all: "Version 2026.38.0 tail words here" is silent on 19 of 20 builds.
++       The whole part is read as one number and the fraction spelled, which is
++       what the fraction code below does for a short whole part; anything past
++       a second stop is given back, so "2026.38.0" reads "... point three
++       eight" and the leftover ".0" is read on its own. A comma anywhere in
++       the token keeps the old path, and so does a short whole part. */
++    if (!has_comma(t)) {
++        int q = p;
++        while (q <= t->cur && is_digit(t, t->ring[q])) q++;
++        if (q - p > 3 && q <= t->cur && t->ring[q] == '.') {
++            int r = q + 1, fn2 = 0;
++            while (r + fn2 <= t->cur && is_digit(t, t->ring[r + fn2])) fn2++;
++            bst_say_number(t, t->ring + p, q - p);
++            int give = q;
++            if (t->money) {
++                emit_ptr(t, t->img->t.s[BST_S_DOLLARS]);
++                if (fn2 > 0) {
++                    emit_ptr(t, t->img->t.s[BST_S_AND]);
++                    bst_say_number(t, t->ring + r, fn2);
++                    emit_ptr(t, t->img->t.s[BST_S_CENTS]);
++                }
++                t->money = 0;
++            } else if (fn2 > 0) {
++                emit_ptr(t, t->img->t.s[BST_S_POINT]);
++                bst_say_digits(t, t->ring + r, fn2);
++            }
++            if (fn2 > 0) give = r + fn2;
++            unread(t, t->cur - (give - 1));
++            t->prevkind = t->kind;
++            t->kind = 6;
++            return 1;
++        }
++    }
 +
      for (;;) {
          int q = p;

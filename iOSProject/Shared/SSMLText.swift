@@ -387,6 +387,7 @@ public enum SSMLText {
         // After `say-as`, so a term it spelled out is not rewritten again.
         text = applyPronunciations(text)
         text = separateAdjacentNumbers(text)
+        text = softenCommas(text)
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -851,8 +852,8 @@ public enum SSMLText {
     /// here" says "Room 101" and stops, which is what this function used to
     /// produce. The colon keeps the tail on those builds, and on all twenty.
     ///
-    /// A comma the user wrote is left alone. This only replaces the comma this
-    /// function inserts.
+    /// A comma the user wrote is rewritten by `softenCommas` below, which is
+    /// why this function only ever inserts colons of its own.
     static func separateAdjacentNumbers(_ text: String) -> String {
         let characters = Array(text)
         var output: [Character] = []
@@ -871,6 +872,41 @@ public enum SSMLText {
             output.append(character)
         }
         return String(output)
+    }
+
+    /// Rewrites a comma the user wrote as a colon, unless it sits between
+    /// two digits.
+    ///
+    /// On every one of the thirteen 2006 builds a comma **ends the text**: the
+    /// comma and everything after it is never spoken. Measured on 2006ENG,
+    /// "Reddit, Yesterday" is byte-identical to "Reddit" alone (9370 samples,
+    /// one word token), while "Reddit: Yesterday" keeps both words (19066).
+    /// That is what an App Store line like
+    /// "Reddit, Yesterday, Version 2026.38.0" does: only "Reddit" is heard.
+    /// A colon is byte-identical to the comma on the seven older builds
+    /// ("Hello, world" and "Hello: world" match sample-for-sample on 1995 and
+    /// 1998ENG), so the rewrite changes nothing where the comma already works.
+    ///
+    /// Only a comma with a digit immediately either side is kept: "1,000" is a
+    /// grouped number and "5,19" is a list the engine patch reads, and
+    /// rewriting either one's comma goes silent. Measured: "alpha 1,000 omega"
+    /// must keep its comma, while "alpha 1:000 omega" reads as six words.
+    static func softenCommas(_ text: String) -> String {
+        let characters = Array(text)
+        var output = ""
+        output.reserveCapacity(text.count)
+        for (index, character) in characters.enumerated() {
+            guard character == "," else { output.append(character); continue }
+            let prev = index > 0 ? characters[index - 1] : nil
+            let next = index + 1 < characters.count ? characters[index + 1] : nil
+            if let p = prev, let n = next, p.isASCII, n.isASCII,
+               p.isNumber, n.isNumber {
+                output.append(character)
+            } else {
+                output.append(":")
+            }
+        }
+        return output
     }
 
     static func collapseWhitespace(_ text: String) -> String {

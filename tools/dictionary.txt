@@ -147,8 +147,11 @@ Smartphone	smart phone
 Smartwatch	smart watch
 Ebook	e book
 eBook	e book
+ebook	e book
 Email	e mail
+email	e mail
 Ecommerce	e commerce
+ecommerce	e commerce
 Online	on line
 Offline	off line
 Website	web site

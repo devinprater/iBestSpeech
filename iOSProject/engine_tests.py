@@ -128,6 +128,11 @@ def main():
                       # it, and the utterance made no sound at all
                       "5 19", "5/19", "5,19", "3,4,5",
                       "555 1234", "Call 555 1234 now", "Room 101 202",
+                      # a decimal with a long whole part: "2026.38.0" is an
+                      # App Store version, and it used to silence the whole
+                      # utterance on 19 of 20 builds
+                      "2026.38.0", "1234.5", "Version 2026.38.0 tail words here",
+                      "Version",
                       # a grouped number, which must keep working as one
                       "1,000", "1,234", "1,234,567",
                       "alpha 3,4,5", "alpha 3,4,5 omega zeta",
@@ -246,6 +251,22 @@ def main():
                   "Call 555 1234 now", "Room 101 202"]:
             check(r[(b, t)][0] > 0, f'{b}: "{t}" speaks',
                   f"got {r[(b, t)][0]} samples")
+
+    print("\n-- a decimal with a long whole part must speak, tail and all --")
+    # The grouped-number handler only let a first group of three through and
+    # rejected "2026.38.0" without consuming it: no handler was left, so the
+    # machine spun on the token and "Version 2026.38.0 tail words here" made
+    # no sound at all. The whole part is now read and the fraction spelled.
+    for b in BUILDS:
+        for t in ["2026.38.0", "1234.5"]:
+            check(r[(b, t)][0] > 0, f'{b}: "{t}" speaks',
+                  f"got {r[(b, t)][0]} samples")
+    for b in BUILDS:
+        whole = r[(b, "Version 2026.38.0 tail words here")][0]
+        prefix = r[(b, "Version")][0]
+        check(whole > prefix,
+              f'{b}: "Version 2026.38.0 tail words here" keeps its tail',
+              f"{whole} vs {prefix} samples")
 
     print("\n-- and each number in the run must be read --")
     # The run is two numbers, not one: it has to come out longer than the first

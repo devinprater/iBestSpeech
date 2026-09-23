@@ -261,7 +261,9 @@ struct SSMLTextTests {
         expect(#"<sub alias="World Health Organization">WHO</sub>"#,
                "World Health Organization", "sub speaks the alias, not the abbreviation")
         expect("<speak>  spaced   out  </speak>", "spaced out", "whitespace collapsed")
-        expect("Hello , world", "Hello, world", "no gap before punctuation")
+        // The gap closes, and then the comma becomes a colon: on the thirteen
+        // 2006 builds a comma ends the text outright.
+        expect("Hello , world", "Hello: world", "no gap before punctuation")
 
         print("\n-- a clock time: the colon makes it silent, so it is rewritten --")
         // A hyphen takes the engine's number-group separator path. A full stop
@@ -321,7 +323,10 @@ struct SSMLTextTests {
                "family man woman girl", "a joined family loses its commas")
         // ASCII is the engine's own business, and CLDR annotates punctuation
         // too -- replacing that would rewrite the punctuation of ordinary text.
-        expect("<speak>hello, world!</speak>", "hello, world!",
+        // The comma is still not *described* (no "comma" word is spoken); it
+        // is rewritten as a colon, which the engine reads as a short pause.
+        // A comma ends the text on the thirteen 2006 builds.
+        expect("<speak>hello, world!</speak>", "hello: world!",
                "punctuation is not described")
 
         print("\n-- the language the voice speaks --")
@@ -384,6 +389,24 @@ struct SSMLTextTests {
         expect("<speak>iPadOS</speak>", "eye pad oh ess", "iPadOS beats iPad")
         expect("<speak>Send it over FaceTime now</speak>",
                "Send it over Face Time now", "a term inside a sentence")
+        // Lowercase "email" had no entry while "Email" did; the engine reads
+        // the joined form as one odd word on all three English builds.
+        expect("<speak>email</speak>", "e mail", "lowercase email is split")
+        expect("<speak>Email</speak>", "e mail", "capitalized Email is split")
+        expect("<speak>Please email support</speak>", "Please e mail support",
+               "email inside a sentence")
+        // A comma the user wrote ended the text on the thirteen 2006 builds:
+        // "Reddit, Yesterday" was byte-identical to "Reddit" alone on 2006ENG.
+        // A colon keeps both words and matches the comma sample-for-sample
+        // where the comma already works.
+        expect("<speak>Reddit, Yesterday</speak>", "Red dit: Yesterday",
+               "a user comma becomes a colon")
+        expect("<speak>Hello, world</speak>", "Hello: world",
+               "comma with space becomes a colon")
+        // ...unless the comma sits between two digits: "1,000" is a grouped
+        // number and "5,19" is a list the engine patch reads.
+        expect("<speak>1,000</speak>", "1,000", "a grouped number keeps its comma")
+        expect("<speak>5,19</speak>", "5,19", "a digit-list keeps its comma")
         // Case-sensitive and whole-word, or these would be rewritten.
         expect("<speak>facetiming</speak>", "facetiming", "a longer word is left alone")
         expect("<speak>mai</speak>", "mai", "a substring is left alone")
