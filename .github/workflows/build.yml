@@ -78,8 +78,13 @@ jobs:
           set -euo pipefail
           # These need no Xcode project: each is compiled together with the file
           # under test, so it cannot drift from what ships.
+          # The generated tables are compiled with SSMLText because that is what
+          # uses them: a table that stopped compiling is a failure here rather
+          # than a surprise on a device.
           swiftc -parse-as-library \
             "$GITHUB_WORKSPACE/iOSProject/Shared/SSMLText.swift" \
+            "$GITHUB_WORKSPACE/iOSProject/Shared/CLDRText.swift" \
+            "$GITHUB_WORKSPACE/iOSProject/Shared/Pronunciations.swift" \
             "$GITHUB_WORKSPACE/iOSProject/Tests/SSMLTextTests.swift" \
             -o "$RUNNER_TEMP/ssmltests"
           "$RUNNER_TEMP/ssmltests"
@@ -90,7 +95,31 @@ jobs:
             -o "$RUNNER_TEMP/paramtests"
           "$RUNNER_TEMP/paramtests"
 
+          swiftc -parse-as-library \
+            "$GITHUB_WORKSPACE/iOSProject/Shared/LanguageDetector.swift" \
+            "$GITHUB_WORKSPACE/iOSProject/Tests/LanguageDetectorTests.swift" \
+            -o "$RUNNER_TEMP/langtests"
+          "$RUNNER_TEMP/langtests"
+
           swift "$GITHUB_WORKSPACE/iOSProject/Tests/VoiceIdentifierTests.swift"
+
+      - name: The generated tables must match their source
+        run: |
+          set -euo pipefail
+          # tools/dictionary.txt and the CLDR data are the source; the two Swift
+          # tables are generated from them. Regenerating and finding a diff means
+          # one was edited without the other, so the check-in is stale.
+          python3 "$GITHUB_WORKSPACE/tools/build_tables.py" >/dev/null
+          if ! git -C "$GITHUB_WORKSPACE" diff --quiet -- \
+                 iOSProject/Shared/CLDRText.swift \
+                 iOSProject/Shared/Pronunciations.swift; then
+            echo "::error::the generated tables are out of date; run tools/build_tables.py"
+            git -C "$GITHUB_WORKSPACE" --no-pager diff --stat -- \
+                iOSProject/Shared/CLDRText.swift \
+                iOSProject/Shared/Pronunciations.swift
+            exit 1
+          fi
+          echo "generated tables match their source"
 
       - name: Generate the Xcode project and build the app
         working-directory: iOSProject

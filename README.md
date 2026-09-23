@@ -72,6 +72,72 @@ why the text layer must not use a comma. The colon keeps the tail on all twenty
 builds. A comma the user wrote is left alone; only the separator this layer
 inserts is a colon.
 
+**Emoji and other characters the engine cannot read are spoken as their
+descriptions.** The engine reads one byte per character, so an emoji is a
+code-page glyph and the result is not silence but nonsense: measured on 2006ENG a
+lone `✓` is 37,691 samples and six word tokens, and `©` and `®` produce a sample
+count with **no word tokens at all**.
+
+The descriptions come from the Unicode Common Locale Data Repository, from the
+same `tts` annotation and the same mirror that NVDA turns into its emoji symbol
+dictionaries (`nvaccess/nvda#8758`), in the language the voice speaks —
+`😀` is "grinning face" in English and "grinsendes Gesicht" in German. 3,870
+entries in English, 31,331 across the thirteen locales, generated into
+`Shared/CLDRText.swift` by `tools/build_tables.py`.
+
+Two things the raw data cannot be used for, both measured:
+
+- **CLDR writes its descriptions with `:` and `,`** — 2,784 entries carry one.
+  A comma ends the text on every 2006 build, and the description is what gets
+  spoken, so "family: man, woman, girl" would say "family" and stop. Both are
+  stripped. The colon is safe and could have stayed; removing it too keeps the
+  descriptions uniform.
+- **CLDR also annotates 30 punctuation characters** (`!`, `,`, `.`, `:`, `~`).
+  Those are characters the engine already reads, and substituting them would
+  rewrite the punctuation of ordinary text — "hello, world" would become
+  "hello comma world". Only characters outside ASCII are replaced, which is the
+  same line NVDA draws: its punctuation symbols speak only at the highest symbol
+  level, while emoji speak at every level (`nvaccess/nvda#9707`).
+
+A character is looked up by its base form as well as whole, because `❤️` is one
+`Character` to Swift — the heart plus a variation selector — and CLDR keys its
+description on the heart alone.
+
+**Terms the engine mispronounces are in a dictionary.** The engine reads an
+unknown compound as one word: `FaceTime`'s token stream is **identical to
+`facetime`**, so it comes out as one odd word rather than "face time", and
+`iPhone`, `macOS`, `AirDrop`, `SQL` and the rest go the same way. `tools/dictionary.txt`
+holds 160 such terms — Apple product names, networking and file-format
+initialisms, and modern usage the 1990s lexicon has no entry for — and
+`tools/build_tables.py` generates `Shared/Pronunciations.swift` from it.
+
+Every entry was measured against the built engine first: an entry whose term the
+engine already reads correctly is doing nothing but costing a lookup, and
+`python3 tools/build_tables.py --check` reports those against all three English
+builds. It found and removed twelve. Matching is case-sensitive and whole-word,
+which is what keeps a term like `AI` from rewriting the same letters inside a
+French word.
+
+**A voice follows the language of the text.** The engine keeps one voice per
+build, so speaking two languages in one utterance means detecting the language
+and synthesizing with that language's build. `Shared/LanguageDetector.swift`
+does the detection in two stages: the script first, where Cyrillic, Greek,
+Arabic, Hebrew and kana each belong to exactly one build and a single character
+settles it; then function words — "the", "der", "le" — for the eight languages
+that share the Latin alphabet, scored as whole words and requiring both a floor
+and a clear win over the runner-up.
+
+It **declines far more often than it guesses**, and that is the design. A single
+word like "Hallo" is in several of these languages, so a one-word text never
+switches a voice; a word three languages share claims nothing. A wrong switch
+changes the voice the user hears, which is worse than no switch.
+
+This deliberately does not use `NLLanguageRecognizer`, which would be better at
+it: that framework exists only on Apple platforms, so nothing about the file
+could be tested off-device, and an untestable language guess is exactly the kind
+of thing that looks fine here and is wrong on a phone. 24 tests cover the
+unambiguous cases and the refusals.
+
 A **clock time** needs different treatment again, because the colon between its
 digits is worse than silent — it makes the engine produce no samples at all, on
 every build. The colon is rewritten as a hyphen **and a space**, and both halves

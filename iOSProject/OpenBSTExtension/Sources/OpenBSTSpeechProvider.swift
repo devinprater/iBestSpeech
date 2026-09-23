@@ -117,30 +117,54 @@ public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
     }
 
     public override func synthesizeSpeechRequest(_ speechRequest: AVSpeechSynthesisProviderRequest) {
-        guard let buildName = Self.buildName(from: speechRequest.voice.identifier),
-              let bst = engineHandle(for: buildName)
+        guard let buildName = Self.buildName(from: speechRequest.voice.identifier)
         else {
             clearState()
             return
         }
 
-        let parsed = SSMLText.parse(speechRequest.ssmlRepresentation)
+        // The language the requested voice speaks is the default for every
+        // piece. A piece that is clearly in another language is spoken with that
+        // language's build instead -- the engine keeps one voice per build, so
+        // this is the only way to say two languages in one utterance.
+        let defaultLanguage = VoiceCatalog.language(for: buildName)
+
+        let parsed = SSMLText.parse(speechRequest.ssmlRepresentation,
+                                    language: defaultLanguage)
         guard !parsed.pieces.isEmpty else {
             clearState()
             return
         }
 
-        let sourceRate = Double(bst.sampleRate)
         let neutralPitch = EngineParameters.enginePitch(forVoiceOver: 50)
         let neutralRate = EngineParameters.engineRate(forVoiceOver: 0.5)
 
         var samples: [Float] = []
         var markers: [AVSpeechSynthesisMarker] = []
 
+        // One run per consecutive stretch of the same language, in order. A
+        // piece that changed its mind about the language starts a new run, and
+        // the build for a run is opened once and kept for it.
+        var currentBuild: String?
+        var currentHandle: OpenBST?
+
         for piece in parsed.pieces {
             switch piece {
             case .speech(let text, let pitch, let rate, _):
                 guard !text.isEmpty else { continue }
+
+                // A switch only when the detector is sure. It declines on short
+                // text and on anything ambiguous, which keeps the requested
+                // voice for the ordinary case.
+                let wantBuild = LanguageDetector.buildToSpeak(text,
+                                                              insteadOf: defaultLanguage)
+                    ?? buildName
+
+                if wantBuild != currentBuild {
+                    currentBuild = wantBuild
+                    currentHandle = engineHandle(for: wantBuild)
+                }
+                guard let bst = currentHandle else { continue }
 
                 // Both settings are set every time, so a prosody element that
                 // adjusts only one of them does not inherit the other's previous
@@ -156,7 +180,7 @@ public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
                     markers.append(contentsOf: Self.wordMarkers(in: text,
                                                                 atByteOffset: samples.count * 4))
                 }
-                samples.append(contentsOf: Self.resample(pcm, from: sourceRate))
+                samples.append(contentsOf: Self.resample(pcm, from: Double(bst.sampleRate)))
 
             case .pause(let seconds):
                 // Silence is the only pause available: the engine renders one

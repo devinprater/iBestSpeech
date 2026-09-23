@@ -1,0 +1,186 @@
+# Pronunciation dictionary for the Keynote Gold builds.
+#
+# Plain text, tab-separated: the word as typed, then how it should be said.
+# Blank lines and lines starting with '#' are ignored.
+#
+# Matching is CASE-SENSITIVE and whole-word, which is what keeps these safe:
+# "AI" is fixed while the "ai" inside a French word is left alone. Add a term
+# twice if both spellings need it.
+#
+# Only terms the engine actually gets wrong belong here. Every entry below was
+# measured against the built library first -- the engine reads "FaceTime" as one
+# unknown word (its token stream is identical to "facetime"), not as "face time".
+# An entry that matches what the engine already says is a wasted lookup, so check
+# before adding: see tools/build_tables.py --check.
+
+# --- Apple product names: read as one word, so the parts have to be spelled ---
+FaceTime	Face Time
+FaceTimeAudio	Face Time Audio
+iPhone	eye phone
+iPad	eye pad
+iPod	eye pod
+iMac	eye mac
+iMessage	eye message
+iCloud	eye cloud
+iTunes	eye tunes
+iMovie	eye movie
+iPhoto	eye photo
+iPadOS	eye pad oh ess
+iOS	eye oh ess
+macOS	mac oh ess
+watchOS	watch oh ess
+tvOS	tee vee oh ess
+AirDrop	air drop
+AirPods	air pods
+AirPlay	air play
+AirTag	air tag
+AirPrint	air print
+FaceID	face eye dee
+TouchID	touch eye dee
+Xcode	ex code
+
+# --- Networking and the web ---
+Wi-Fi	why fye
+WiFi	why fye
+Bluetooth	blue tooth
+BluetoothLE	blue tooth el ee
+Ethernet	ee ther net
+AirPort	air port
+VPN	vee pee en
+DNS	dee en ess
+IP	eye pee
+IPv4	eye pee vee four
+IPv6	eye pee vee six
+URL	you are ell
+URI	you are eye
+HTTP	aitch tee tee pee
+HTTPS	aitch tee tee pee ess
+HTML	aitch tee em ell
+CSS	see ess ess
+XML	ex em ell
+JSON	jay son
+API	ay pee eye
+API's	ay pee eye's
+REST	rest
+WebSocket	web socket
+SSH	ess ess aitch
+SFTP	ess eff tee pee
+FTP	eff tee pee
+
+# --- Files and formats ---
+PDF	pee dee eff
+JPEG	jay peg
+JPG	jay peg
+PNG	ping
+GIF	jif
+TIFF	tiff
+SVG	ess vee gee
+MP3	em pee three
+MP4	em pee four
+WAV	wave
+MIDI	mid ee
+CSV	see ess vee
+ZIP	zip
+RAR	rar
+DMG	dee em gee
+ISO	eye ess oh
+EXE	ee ex ee
+TXT	text
+
+# --- Devices and hardware ---
+CPU	see pee you
+GPU	gee pee you
+SSD	ess ess dee
+HDD	aitch dee dee
+USB	you ess bee
+HDMI	aitch dee em eye
+LED	ell ee dee
+LCD	ell see dee
+OLED	oh led
+SIM	sim
+eSIM	ee sim
+NFC	en eff see
+QR	queue are
+SSID	ess ess eye dee
+5G	five gee
+4G	four gee
+LTE	ell tee ee
+SoC	ess oh see
+
+# --- Software and computing ---
+Linux	Linn ex
+Ubuntu	oo boon too
+Debian	Deb ee an
+GNU	guh noo
+MySQL	my ess cue ell
+SQL	ess cue ell
+SQLite	ess cue lite
+PostgreSQL	post gres cue ell
+JavaScript	java script
+TypeScript	type script
+Python	pie thon
+npm	en pee em
+GitHub	git hub
+GitLab	git lab
+BitTorrent	bit torrent
+Emoji	eh moe jee
+emoji	eh moe jee
+Unicode	you ni code
+ASCII	ass key
+UTF-8	you tee eff eight
+CLI	see ell eye
+SDK	ess dee kay
+IDE	eye dee ee
+GUI	gooey
+OS	oh ess
+BIOS	bye oss
+Firmware	firm ware
+Malware	mal ware
+Ransomware	ran som ware
+Captcha	cap cha
+Login	Log in
+Logout	Log out
+Username	user name
+Filename	file name
+Hostname	host name
+FilenameExtension	file name extension
+Wi-Fi's	why fye's
+
+# --- Modern usage the old lexicon will not have ---
+Podcast	pod cast
+Webinar	web i nar
+Bitcoin	bit coin
+Cryptocurrency	crypto currency
+Blockchain	block chain
+Smartphone	smart phone
+Smartwatch	smart watch
+Ebook	e book
+eBook	e book
+Email	e mail
+Ecommerce	e commerce
+Online	on line
+Offline	off line
+Website	web site
+Webpage	web page
+Homepage	home page
+Firewall	fire wall
+Screenshot	screen shot
+Touchscreen	touch screen
+Meme	meem
+Meme's	meem's
+AI	ay eye
+LLM	ell ell em
+GPT	gee pee tee
+NFT	en eff tee
+IoT	eye oh tee
+OSHA	oh shah
+FAQ	eff ay cue
+ASAP	ay sap
+RSVP	are ess vee pee
+etc.	et cetera
+i.e.	that is
+e.g.	for example
+vs.	versus
+approx.	approximately
+dept.	department
+govt.	government

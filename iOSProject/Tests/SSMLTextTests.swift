@@ -176,7 +176,10 @@ struct SSMLTextTests {
         expect("3 &gt; 2", "3 > 2", "&gt;")
         expect("&#x41;&#x42;", "AB", "hex character references")
         expect("&#65;&#66;", "AB", "decimal character references")
-        expect("&#x1F600;", "😀", "code point above the BMP does not crash")
+        // A code point above the BMP must survive the entity decode as one
+        // character rather than being split into surrogate halves. What comes
+        // out is its description: the engine cannot read the character itself.
+        expect("&#x1F600;", "grinning face", "code point above the BMP is described")
 
         print("\n-- typographic characters folded for a single-byte engine --")
         expect("&ldquo;quoted&rdquo;", "\"quoted\"", "curly double quotes")
@@ -282,6 +285,57 @@ struct SSMLTextTests {
         expect("<!-- unterminated comment", "", "unterminated comment")
         expect("<speak><prosody rate=\"50%\">unclosed</speak>", "unclosed", "unclosed element")
         expect("<><>", "", "empty tags")
+
+        print("\n-- characters the engine cannot read --")
+        // The engine reads one byte per character, so an emoji is a code-page
+        // glyph and the result is nonsense: measured on 2006ENG, "\u{2713}" alone
+        // is 37,691 samples and six word tokens, and "\u{00A9}" produces a sample
+        // count with no word tokens at all.
+        expect("<speak>\u{1F600}</speak>", "grinning face", "a smiley")
+        expect("<speak>\u{1F44D}</speak>", "thumbs up", "thumbs up")
+        expect("<speak>\u{2764}\u{FE0F}</speak>", "red heart",
+               "a heart and its variation selector")
+        expect("<speak>\u{00A9}</speak>", "copyright", "a copyright sign")
+        expect("<speak>\u{00AE}</speak>", "registered", "a registered sign")
+        expect("<speak>hello \u{1F600} world</speak>", "hello grinning face world",
+               "a smiley inside a sentence")
+        // CLDR writes descriptions with ':' and ','; a comma ends the text on
+        // every 2006 build and the description is what gets spoken.
+        expect("<speak>\u{1F1FA}\u{1F1F8}</speak>", "flag United States",
+               "a flag's description loses its colon")
+        expect("<speak>\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}</speak>",
+               "family man woman girl", "a joined family loses its commas")
+        // ASCII is the engine's own business, and CLDR annotates punctuation
+        // too -- replacing that would rewrite the punctuation of ordinary text.
+        expect("<speak>hello, world!</speak>", "hello, world!",
+               "punctuation is not described")
+
+        print("\n-- the language the voice speaks --")
+        expect("<speak>\u{1F600}</speak>", "grinning face", "English, by default")
+        let inGerman = SSMLText.parse("<speak>\u{1F600}</speak>", language: "de-DE")
+        if case .speech(let text, _, _, _)? = inGerman.pieces.first, !text.isEmpty {
+            print("PASS  German description: \(text)")
+        } else {
+            failures.append("no German description was produced")
+            print("FAIL  no German description was produced")
+        }
+
+        print("\n-- the pronunciation dictionary --")
+        // The engine reads an unknown compound as one word: "FaceTime"'s token
+        // stream is identical to "facetime", so it is one odd word rather than
+        // "face time".
+        expect("<speak>FaceTime</speak>", "Face Time", "FaceTime is split")
+        expect("<speak>iPhone</speak>", "eye phone", "iPhone")
+        expect("<speak>AirDrop</speak>", "air drop", "AirDrop")
+        expect("<speak>WiFi</speak>", "why fye", "WiFi")
+        expect("<speak>SQL</speak>", "ess cue ell", "SQL")
+        expect("<speak>iPadOS</speak>", "eye pad oh ess", "iPadOS beats iPad")
+        expect("<speak>Send it over FaceTime now</speak>",
+               "Send it over Face Time now", "a term inside a sentence")
+        // Case-sensitive and whole-word, or these would be rewritten.
+        expect("<speak>facetiming</speak>", "facetiming", "a longer word is left alone")
+        expect("<speak>mai</speak>", "mai", "a substring is left alone")
+        expect("<speak>hello world</speak>", "hello world", "plain text is untouched")
 
         print("\n\(checks - failures.count)/\(checks) passed")
         if failures.isEmpty { exit(0) }

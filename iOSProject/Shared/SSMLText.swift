@@ -92,7 +92,7 @@ public enum SSMLText {
     ///
     /// A stack rather than a flat scan because elements nest: `prosody` inside
     /// `voice` inside `speak` all apply at once, and the innermost wins.
-    public static func parse(_ ssml: String) -> Parsed {
+    public static func parse(_ ssml: String, language: String = "en-US") -> Parsed {
         struct Context {
             var pitch: Int?
             var rate: Int?
@@ -113,7 +113,7 @@ public enum SSMLText {
         func flush() {
             let raw = buffer
             buffer = ""
-            let text = finish(raw, sayAs: context.sayAs)
+            let text = finish(raw, sayAs: context.sayAs, language: language)
             guard !text.isEmpty else { return }
             pieces.append(.speech(text: text,
                                   pitch: context.pitch,
@@ -368,9 +368,15 @@ public enum SSMLText {
     // MARK: - Text preparation
 
     /// Turns accumulated raw text into what the engine should be given.
-    static func finish(_ raw: String, sayAs: String?) -> String {
+    static func finish(_ raw: String, sayAs: String?,
+                       language: String = "en-US") -> String {
         var text = decodeEntities(raw)
-        // Folded first, so every pass after this one sees plain ASCII.
+        // Emoji and other characters the engine cannot read at all, before the
+        // fold: the fold would keep the character (it has no ASCII form to fold
+        // to) and the engine would read it as a code-page glyph. This is the
+        // step that turns an emoji into the words for it.
+        text = describeUnsupportedCharacters(text, language: language)
+        // Folded next, so every pass after this one sees plain ASCII.
         text = foldForEngine(text)
         text = collapseWhitespace(text)
         text = closeGapsBeforePunctuation(text)
@@ -378,6 +384,8 @@ public enum SSMLText {
         // `say-as` before the number separation: spelling a word out inserts
         // spaces that would otherwise look like adjacent numbers.
         text = applySayAs(text, mode: sayAs)
+        // After `say-as`, so a term it spelled out is not rewritten again.
+        text = applyPronunciations(text)
         text = separateAdjacentNumbers(text)
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -533,6 +541,130 @@ public enum SSMLText {
         "\u{2066}", "\u{2067}", "\u{2068}", "\u{2069}", // bidi isolates
         "\u{FEFF}",                                     // byte order mark
     ]
+
+    // MARK: - Characters the engine cannot read
+
+    /// Replaces characters the engine has no reading for with the words for
+    /// them.
+    ///
+    /// The engine reads one byte per character, so an emoji is a code-page glyph
+    /// and the result is not silence but nonsense: measured on 2006ENG, a single
+    /// check mark (`U+2713`) is 37,691 samples and six word tokens, and `©` and
+    /// `®` produce a sample count with **no word tokens at all**. Neither is
+    /// something a listener can use.
+    ///
+    /// The descriptions come from the Unicode Common Locale Data Repository —
+    /// the same source and the same `tts` annotation NVDA turns into its emoji
+    /// symbol dictionaries (nvaccess/nvda#8758) — in the language the voice
+    /// speaks. Only characters outside ASCII are replaced; the engine reads
+    /// ASCII itself, and CLDR also annotates punctuation, which must be left
+    /// alone.
+    ///
+    /// This runs before `foldForEngine` because the fold keeps a character it
+    /// cannot fold, and the folded text is what `separateAdjacentNumbers` and
+    /// the rest of the pipeline see.
+    static func describeUnsupportedCharacters(_ text: String, language: String) -> String {
+        var output = ""
+        output.reserveCapacity(text.count)
+        for character in text {
+            // ASCII: the engine reads it, and CLDR's annotations for ASCII are
+            // its punctuation, which is not ours to replace.
+            if character.isASCII {
+                output.append(character)
+                continue
+            }
+            // A character the fold knows how to turn into ASCII already has a
+            // reading — a curly quote, a dash, an accented letter. Those carry
+            // the author's punctuation and stress, so they keep it.
+            if typographicReplacements[character] != nil {
+                output.append(character)
+                continue
+            }
+            if invisibleCharacters.contains(character) {
+                output.append(character)
+                continue
+            }
+            let folded = String(character)
+                .folding(options: .diacriticInsensitive, locale: nil)
+            if folded != String(character), folded.contains(where: { $0.isASCII }) {
+                output.append(character)
+                continue
+            }
+            // Everything else has no reading the engine can use. Say what it is.
+            guard let description = Self.description(for: character,
+                                                     language: language) else {
+                // No description anywhere: leave it for the fold, which passes it
+                // through unchanged, exactly as before this pass existed.
+                output.append(character)
+                continue
+            }
+            // A space either side, so a description never joins the words around
+            // it into one token.
+            output.append(" ")
+            output += description
+            output.append(" ")
+        }
+        return output
+    }
+
+    /// The description for a character, looked up by its base form.
+    ///
+    /// A character like "\u{2764}\u{FE0F}" is a single `Character` to Swift --
+    /// the base plus a variation selector asking for emoji presentation -- and
+    /// CLDR keys its description on the base alone, so looking up the whole
+    /// grapheme finds nothing. Variation selectors are stripped and the lookup
+    /// retried, then the first scalar is tried, which also covers keycap
+    /// sequences and the like.
+    private static func description(for character: Character,
+                                    language: String) -> String? {
+        if let found = CLDRText.description(for: character, language: language) {
+            return found
+        }
+        let base = String(character.unicodeScalars.filter { !isVariationSelector($0) })
+        if base != String(character), !base.isEmpty {
+            if let found = CLDRText.description(for: Character(base),
+                                                language: language) {
+                return found
+            }
+        }
+        // A sequence CLDR has no entry for as a whole: ask about its first
+        // scalar, which is the character the reader sees.
+        if let first = character.unicodeScalars.first {
+            let single = Character(String(first))
+            if single != character {
+                return CLDRText.description(for: single, language: language)
+            }
+        }
+        return nil
+    }
+
+    /// The variation selectors: text (U+FE0E) and emoji (U+FE0F) presentation,
+    /// and the supplementary ones U+E0100-U+E01EF.
+    private static func isVariationSelector(_ scalar: Unicode.Scalar) -> Bool {
+        scalar.value == 0xFE0E || scalar.value == 0xFE0F
+            || (scalar.value >= 0xE0100 && scalar.value <= 0xE01EF)
+    }
+
+    /// Says a term the way the engine needs to hear it.
+    ///
+    /// The engine reads an unknown compound as one word: "FaceTime"'s token
+    /// stream is identical to "facetime", so it comes out as one odd word rather
+    /// than "face time". Entries come from `tools/dictionary.txt` via
+    /// `Pronunciations`; the matching is case-sensitive and whole-word, which is
+    /// what keeps a term like "AI" from rewriting the same letters inside a
+    /// French word.
+    static func applyPronunciations(_ text: String) -> String {
+        guard !Pronunciations.ordered.isEmpty else { return text }
+        var result = text
+        for (term, replacement) in Pronunciations.ordered {
+            // Longest first in the table, so "iPadOS" is settled before "iPad".
+            result = replacing(result,
+                               pattern: "\\b" + NSRegularExpression.escapedPattern(for: term) + "\\b") {
+                _ in replacement
+            }
+        }
+        return result
+    }
 
     /// `say-as` handling.
     ///
