@@ -401,6 +401,10 @@ struct SSMLTextTests {
         // "Devin" voices its e as a long i ("Divin"); "Dev" is the short-e
         // form, as in "developer" and "Kevin", and "in" is unstressed.
         expect("<speak>Devin</speak>", "Dev in", "Devin has a short e")
+        // Native "Stange" drops its g ("Saint"); the wanted reading keeps a
+        // hard g and an "ee" ending, which the single word "stanggy" gives as
+        // one token with one stress -- right for a surname.
+        expect("<speak>Stange</speak>", "stanggy", "Stange keeps its g")
         // A display name: the ordinary word "pizza" (usual ts) plus "cat".
         expect("<speak>PizzaCat</speak>", "pizza cat", "PizzaCat splits")
         // A comma the user wrote ended the text on the thirteen 2006 builds:

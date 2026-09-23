@@ -99,6 +99,8 @@ enum Pronunciations {
         ("GitHub", "git hub"),
         ("GitLab", "git lab"),
         ("Logout", "Log out"),
+        ("Stange", "stanggy"),
+        ("stange", "stanggy"),
         ("Online", "on line"),
         ("macOS", "mac oh ess"),
         ("Xcode", "ex code"),

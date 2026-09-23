@@ -145,6 +145,8 @@ Blockchain	block chain
 bottleneck	bottle neck
 Devin	Dev in
 devin	Dev in
+Stange	stanggy
+stange	stanggy
 Bottleneck	bottle neck
 PizzaCat	pizza cat
 Smartphone	smart phone
