@@ -106,7 +106,7 @@ description on the heart alone.
 unknown compound as one word: `FaceTime`'s token stream is **identical to
 `facetime`**, so it comes out as one odd word rather than "face time", and
 `iPhone`, `macOS`, `AirDrop`, `SQL` and the rest go the same way. `tools/dictionary.txt`
-holds 138 such terms — Apple product names, networking and file-format
+holds 139 such terms — Apple product names, networking and file-format
 initialisms, and modern usage the 1990s lexicon has no entry for — and
 `tools/build_tables.py` generates `Shared/Pronunciations.swift` from it.
 
