@@ -85,6 +85,7 @@ jobs:
             "$GITHUB_WORKSPACE/iOSProject/Shared/SSMLText.swift" \
             "$GITHUB_WORKSPACE/iOSProject/Shared/CLDRText.swift" \
             "$GITHUB_WORKSPACE/iOSProject/Shared/Pronunciations.swift" \
+            "$GITHUB_WORKSPACE/iOSProject/Shared/UnitPlurals.swift" \
             "$GITHUB_WORKSPACE/iOSProject/Tests/SSMLTextTests.swift" \
             -o "$RUNNER_TEMP/ssmltests"
           "$RUNNER_TEMP/ssmltests"
@@ -110,13 +111,16 @@ jobs:
           # tables are generated from them. Regenerating and finding a diff means
           # one was edited without the other, so the check-in is stale.
           python3 "$GITHUB_WORKSPACE/tools/build_tables.py" >/dev/null
+          python3 "$GITHUB_WORKSPACE/tools/build_units.py" >/dev/null
           if ! git -C "$GITHUB_WORKSPACE" diff --quiet -- \
                  iOSProject/Shared/CLDRText.swift \
-                 iOSProject/Shared/Pronunciations.swift; then
-            echo "::error::the generated tables are out of date; run tools/build_tables.py"
+                 iOSProject/Shared/Pronunciations.swift \
+                 iOSProject/Shared/UnitPlurals.swift; then
+            echo "::error::the generated tables are out of date; run tools/build_tables.py and tools/build_units.py"
             git -C "$GITHUB_WORKSPACE" --no-pager diff --stat -- \
                 iOSProject/Shared/CLDRText.swift \
-                iOSProject/Shared/Pronunciations.swift
+                iOSProject/Shared/Pronunciations.swift \
+                iOSProject/Shared/UnitPlurals.swift
             exit 1
           fi
           echo "generated tables match their source"

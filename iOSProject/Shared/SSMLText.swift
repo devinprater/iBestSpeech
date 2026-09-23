@@ -590,6 +590,16 @@ public enum SSMLText {
                 output.append(character)
                 continue
             }
+            // A UNIT symbol after a number reads in that number's plural form:
+            // "84 degrees", not the singular "84 degree" the CLDR annotation
+            // carries. Anywhere else it keeps its description.
+            if let unit = Self.unitName(for: character, language: language,
+                                        precededBy: output) {
+                output.append(" ")
+                output += unit
+                output.append(" ")
+                continue
+            }
             // Everything else has no reading the engine can use. Say what it is.
             guard let description = Self.description(for: character,
                                                      language: language) else {
@@ -636,6 +646,103 @@ public enum SSMLText {
             }
         }
         return nil
+    }
+
+    /// The hex-scalar key a character is stored under: its code points joined by
+    /// "-", which is how the generated CLDR and unit tables are keyed.
+    static func scalarKey(for character: Character) -> String? {
+        let scalars = character.unicodeScalars.map { String(format: "%X", $0.value) }
+        return scalars.isEmpty ? nil : scalars.joined(separator: "-")
+    }
+
+    /// The unit name for a symbol directly following a number, in that number's
+    /// plural form. nil when the character is not a unit symbol, no number
+    /// precedes it, or the language has no forms for the unit -- in which case
+    /// the ordinary description applies.
+    private static func unitName(for character: Character, language: String,
+                                 precededBy output: String) -> String? {
+        guard let key = scalarKey(for: character),
+              let number = numberImmediatelyBefore(output),
+              let forms = UnitPlurals.names[LanguageDetector.base(language)]?[key]
+        else { return nil }
+        let category = pluralCategory(of: number, language: language)
+        return forms[category] ?? forms["other"]
+    }
+
+    /// The number a string ends with, if it ends with one: "84" in "84", "84.5"
+    /// in "It is 84.5". A separator or a word between the number and the symbol
+    /// means the symbol is not counting it, so nothing is returned.
+    private static func numberImmediatelyBefore(_ text: String) -> (value: Int,
+                                                                    fractional: Bool)? {
+        var digits: [Character] = []
+        var fractional = false
+        var seenDigit = false
+        for character in text.reversed() {
+            if character.isNumber {
+                digits.insert(character, at: 0)
+                seenDigit = true
+            } else if character == "." && seenDigit && !fractional {
+                // A decimal point belongs to the number only between digits.
+                fractional = true
+            } else {
+                break
+            }
+        }
+        guard seenDigit, let value = Int(String(digits)) else { return nil }
+        return (value, fractional)
+    }
+
+    /// CLDR's cardinal plural category for a count, per language.
+    ///
+    /// Not an English `count == 1` test: Polish, Russian and Arabic each have
+    /// categories English does not, and French uses the singular for zero.
+    /// Integer counts only, which is what a unit symbol after a number is.
+    static func pluralCategory(of number: (value: Int, fractional: Bool),
+                               language: String) -> String {
+        let n = abs(number.value)
+        let base = LanguageDetector.base(language)
+
+        // A fractional count is never the singular category.
+        if number.fractional { return "other" }
+
+        switch base {
+        case "fr":
+            // French: zero and one are both singular.
+            return (n == 0 || n == 1) ? "one" : "other"
+        case "ja":
+            return "other"
+        case "pl":
+            if n == 1 { return "one" }
+            let tens = n % 10, hundreds = n % 100
+            if (2...4).contains(tens) && !(12...14).contains(hundreds) { return "few" }
+            if n != 1 && ((0...1).contains(tens) || (5...9).contains(tens)
+                          || (12...14).contains(hundreds)) { return "many" }
+            return "other"
+        case "ru":
+            let tens = n % 10, hundreds = n % 100
+            if tens == 1 && hundreds != 11 { return "one" }
+            if (2...4).contains(tens) && !(12...14).contains(hundreds) { return "few" }
+            if tens == 0 || (5...9).contains(tens) || (11...14).contains(hundreds) {
+                return "many"
+            }
+            return "other"
+        case "ar":
+            let hundreds = n % 100
+            if n == 0 { return "zero" }
+            if n == 1 { return "one" }
+            if n == 2 { return "two" }
+            if (3...10).contains(hundreds) { return "few" }
+            if (11...99).contains(hundreds) { return "many" }
+            return "other"
+        case "he":
+            if n == 1 { return "one" }
+            if n == 2 { return "two" }
+            if n != 0 && n % 10 == 0 { return "many" }
+            return "other"
+        default:
+            // en, de, es, it, nl, pt, el and the rest of the bundle.
+            return n == 1 ? "one" : "other"
+        }
     }
 
     /// The variation selectors: text (U+FE0E) and emoji (U+FE0F) presentation,
@@ -841,8 +948,9 @@ public enum SSMLText {
     // MARK: - Convenience
 
     /// The words to speak, with markup resolved.
-    public static func plainText(from ssml: String) -> String {
-        parse(ssml).text
+    public static func plainText(from ssml: String,
+                                 language: String = "en-US") -> String {
+        parse(ssml, language: language).text
     }
 
     /// VoiceOver-scale pitch and rate from the first spoken piece.

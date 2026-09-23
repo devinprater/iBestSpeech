@@ -31,6 +31,20 @@ struct SSMLTextTests {
         }
     }
 
+    /// The same, for a specific language: the plural forms differ per language,
+    /// so the unit tests must be able to name one.
+    static func expect(_ ssml: String, _ expected: String, _ label: String,
+                       language: String) {
+        checks += 1
+        let got = SSMLText.plainText(from: ssml, language: language)
+        if got != expected {
+            failures.append("\(label)\n      ssml:     \(ssml)\n      got:      \"\(got)\"\n      expected: \"\(expected)\"")
+            print("FAIL  \(label)")
+        } else {
+            print("PASS  \(label)")
+        }
+    }
+
     static func expectInt(_ got: Int?, _ expected: Int?, _ label: String) {
         checks += 1
         if got == expected {
@@ -326,6 +340,35 @@ struct SSMLTextTests {
         expect("<speak>iPadOS apps</speak>", "eye pad oh ess apps",
                "the longer term wins over its prefix")
         expect("<speak>iPad apps</speak>", "eye pad apps", "the shorter term alone")
+        // -- unit symbols after a number take the number's plural form --
+        // Reported: the weather showed 84 with a degree sign and Keynote Gold
+        // said "84 degree". CLDR's annotation for that sign is the SINGULAR
+        // noun, and the character pass substituted it verbatim.
+        print("\n-- units read in the number's plural form --")
+        expect("<speak>84\u{00B0}</speak>", "84 degrees", "84 degrees, not 84 degree")
+        expect("<speak>1\u{00B0}</speak>", "1 degree", "one degree is singular")
+        expect("<speak>0\u{00B0}</speak>", "0 degrees", "zero is plural in English")
+        expect("<speak>84\u{00B0}C</speak>", "84 degrees C", "degrees then the scale")
+        expect("<speak>It is 84\u{00B0} out</speak>", "It is 84 degrees out",
+               "a degree sign mid-sentence")
+        // The rule is CLDR's cardinal category for the language, not an English
+        // count == 1 test: French uses the singular for zero, and Russian and
+        // Polish have categories English does not.
+        expect("<speak>0\u{00B0}</speak>", "0 degre", "French zero is singular",
+               language: "fr-FR")
+        expect("<speak>84\u{00B0}</speak>", "84 grados", "Spanish plural",
+               language: "es-ES")
+        expect("<speak>84\u{00B0}</speak>", "84 gradi", "Italian plural",
+               language: "it-IT")
+        // A symbol that is not counting a number keeps its description.
+        expect("<speak>the \u{00B0} symbol</speak>", "the degree symbol",
+               "a degree sign with no number keeps its name")
+
+        // -- currency symbols, the same rule --
+        expect("<speak>5\u{20AC}</speak>", "5 euros", "5 euros, not 5 euro")
+        expect("<speak>1\u{20AC}</speak>", "1 euro", "one euro is singular")
+        expect("<speak>5\u{00A2}</speak>", "5 cents", "5 cents")
+
         print("\n-- the pronunciation dictionary --")
         // The engine reads an unknown compound as one word: "FaceTime"'s token
         // stream is identical to "facetime", so it is one odd word rather than

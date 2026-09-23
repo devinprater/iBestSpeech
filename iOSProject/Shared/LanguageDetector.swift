@@ -296,6 +296,14 @@ public enum LanguageDetector {
     /// no one-word text can reach, so a single word never moves a voice.
     private static let minimumWordsForOneHit = 3
 
+    /// What a SINGLE function-word hit must score to count as evidence.
+    ///
+    /// One hit in a long text is a coincidence, not a detection -- "over" alone
+    /// in "Buy now, pay over time" read as Dutch. A lone hit is accepted only
+    /// when the text is short enough that the word is a real share of it, which
+    /// keeps "Hallo" and "Bonjour" working while refusing the sentence case.
+    private static let oneHitScoreFloor = 0.5
+
     private static func latinLanguage(of text: String) -> String? {
         let all = text.lowercased()
             .split(whereSeparator: { !$0.isLetter })
@@ -333,6 +341,22 @@ public enum LanguageDetector {
 
         // A tie between two languages is no evidence for either.
         if scores.count > 1, scores[1].hits == best.hits { return nil }
+
+        // One hit in a long text is not a detection. "Buy now, pay over time"
+        // was read as Dutch because "over" is a Dutch function word: one hit
+        // out of five words, and nothing else scored at all. The floor below
+        // asks a lone hit to be a meaningful share of the text, which a single
+        // coincidence inside a sentence never is.
+        //
+        // Measured on the real strings: the false positive was one hit in five
+        // words (20%); genuine short sentences in these languages score far
+        // higher ("El perro esta en la casa y no quiere salir" is 5 hits in
+        // ten words). Requiring two hits for a text of any length that is not
+        // overwhelmingly one language's words separates them cleanly.
+        let decisive = best.hits >= 2
+            || best.score >= oneHitScoreFloor
+        guard decisive else { return nil }
+
         return best.language
     }
 

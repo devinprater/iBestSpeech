@@ -21,6 +21,24 @@
 # An all-caps run the engine already spells needs no entry at all -- it
 # reads "PDF" and "URL" letter by letter on its own.
 
+AppleCare	Apple Care
+ApplePay	Apple Pay
+Discord	Dis cord
+Facebook	Face Book
+HomePod	Home Pod
+Instagram	Insta gram
+LinkedIn	Linked In
+MacBook	Mac Book
+Netflix	Net flix
+PlayStation	Play Station
+Reddit	Red dit
+Safari	Sa fari
+Snapchat	Snap Chat
+Spotify	Spot ify
+TikTok	Tik Tok
+WhatsApp	Whats App
+Wikipedia	Wiki pedia
+YouTube	You Tube
 # --- Apple product names: read as one word, so the parts have to be spelled ---
 #
 # Two entries spell a word rather than the letters, on purpose: ASCII and

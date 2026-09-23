@@ -86,6 +86,21 @@ enum LanguageDetectorTests {
         expectNotForeign("Software Update", "Software Update")
         expectNotForeign("Airplane Mode", "Airplane Mode")
         expectNotForeign("No Items", "No Items")
+
+        // Reported: an App Store promotion line was read as another language.
+        // "Buy now, pay over time, Yesterday, Version 4.98.2 * 129.2 MB" came
+        // back Dutch, because "over" is a Dutch function word and it was the
+        // only word in the line that matched anything. One hit in a long text
+        // is a coincidence, and is no longer accepted as evidence.
+        expectNotForeign("Buy now, pay over time, Yesterday, Version 4.98.2 \u{2022} 129.2 MB",
+                         "an App Store line")
+        expectNotForeign("Buy now, pay over time", "a purchase line is not Dutch")
+        expectNotForeign("Buy now, pay later", "a purchase line is not Dutch")
+        expectNotForeign("Pay over time", "a purchase line is not Dutch")
+        expectNotForeign("Add to Cart", "a store button")
+        expectNotForeign("Free for 30 days", "a promotion")
+        expectNotForeign("Sign in with Apple", "a sign-in line")
+        expectNotForeign("In-App Purchases", "a store line")
         expectNotForeign("Loading", "Loading")
         expectNotForeign("Cancel", "Cancel")
         expectNotForeign("Settings", "Settings")
