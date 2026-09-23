@@ -31,12 +31,13 @@ jobs:
           set -euo pipefail
           git clone --quiet https://github.com/Mudb0y/openbst "$RUNNER_TEMP/openbst"
           git -C "$RUNNER_TEMP/openbst" checkout --quiet "$OPENBST_COMMIT"
-          # The patch is the reason clock times speak at all. Verify it applied
-          # by asking git, not by reading the output.
-          git -C "$RUNNER_TEMP/openbst" apply Patches/openbst-clock-times.patch
-          git -C "$RUNNER_TEMP/openbst" diff --quiet src/tokenise.c src/text.c \
+          # cd into the clone and use an absolute patch path: a relative one
+          # would resolve inside the clone, and -C with -C would not help.
+          cd "$RUNNER_TEMP/openbst"
+          git apply "$GITHUB_WORKSPACE/Patches/openbst-clock-times.patch"
+          git diff --quiet src/tokenise.c src/text.c \
             && { echo "::error::patch applied but the sources are unchanged"; exit 1; }
-          echo "engine at $(git -C "$RUNNER_TEMP/openbst" rev-parse --short HEAD), patched"
+          echo "engine at $(git rev-parse --short HEAD), patched"
 
       - name: Engine regression tests (host, no Xcode)
         run: |
@@ -51,18 +52,19 @@ jobs:
           # Revert the patch and require the tests to FAIL. Without this, a
           # test that has quietly stopped exercising anything would keep
           # passing and nobody would know.
-          git -C "$RUNNER_TEMP/openbst" apply --reverse Patches/openbst-clock-times.patch
-          if python3 iOSProject/engine_tests.py --upstream "$RUNNER_TEMP/openbst" >/dev/null 2>&1; then
+          cd "$RUNNER_TEMP/openbst"
+          git apply --reverse "$GITHUB_WORKSPACE/Patches/openbst-clock-times.patch"
+          if python3 "$GITHUB_WORKSPACE/iOSProject/engine_tests.py" --upstream "$RUNNER_TEMP/openbst" >/dev/null 2>&1; then
             echo "::error::engine tests pass on the UNPATCHED engine, so they are not testing the patch"
             exit 1
           fi
           echo "engine tests fail without the patch, as they should"
-          git -C "$RUNNER_TEMP/openbst" apply Patches/openbst-clock-times.patch
+          git apply "$GITHUB_WORKSPACE/Patches/openbst-clock-times.patch"
 
       - name: Engine smoke test (every build produces samples)
         run: |
           set -euo pipefail
-          python3 iOSProject/smoke_test.py --upstream "$RUNNER_TEMP/openbst"
+          python3 "$GITHUB_WORKSPACE/iOSProject/smoke_test.py" --upstream "$RUNNER_TEMP/openbst"
 
       - name: Build the XCFramework
         working-directory: iOSProject
@@ -77,18 +79,18 @@ jobs:
           # These need no Xcode project: each is compiled together with the file
           # under test, so it cannot drift from what ships.
           swiftc -parse-as-library \
-            iOSProject/Shared/SSMLText.swift \
-            iOSProject/Tests/SSMLTextTests.swift \
+            "$GITHUB_WORKSPACE/iOSProject/Shared/SSMLText.swift" \
+            "$GITHUB_WORKSPACE/iOSProject/Tests/SSMLTextTests.swift" \
             -o "$RUNNER_TEMP/ssmltests"
           "$RUNNER_TEMP/ssmltests"
 
           swiftc -parse-as-library \
-            iOSProject/Shared/EngineParameters.swift \
-            iOSProject/Tests/EngineParameterTests.swift \
+            "$GITHUB_WORKSPACE/iOSProject/Shared/EngineParameters.swift" \
+            "$GITHUB_WORKSPACE/iOSProject/Tests/EngineParameterTests.swift" \
             -o "$RUNNER_TEMP/paramtests"
           "$RUNNER_TEMP/paramtests"
 
-          swift iOSProject/Tests/VoiceIdentifierTests.swift
+          swift "$GITHUB_WORKSPACE/iOSProject/Tests/VoiceIdentifierTests.swift"
 
       - name: Generate the Xcode project and build the app
         working-directory: iOSProject
