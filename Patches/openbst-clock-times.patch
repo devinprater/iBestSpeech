@@ -1,0 +1,84 @@
+Fix the engine so a digital clock time is read as a time.
+
+  1. number_out() rejected any digit run containing a non-digit. A time
+     arrives there as one token, "8:00", because the transition table
+     gives a digit-flanked colon a state of its own. The run was rejected,
+     what followed fell to a fallback that never reached the machine, and
+     the utterance came out with no sound at all. Each run either side of
+     the colon is now read as a number.
+
+  2. The 1998 English module's digit-name, tens and teens table addresses
+     were four bytes low, so every digit resolved one slot into the next
+     name -- a single digit read the following digit's name, and a
+     two-digit run of 10 or less ran off the end of the table. That is the
+     "minutes starting with a zero are read as a long sequence" fault.
+
+Apply from the root of an openbst checkout:
+    git apply Patches/openbst-clock-times.patch
+
+diff --git a/src/text.c b/src/text.c
+index f8acae3..4f75551 100644
+--- a/src/text.c
++++ b/src/text.c
+@@ -190,9 +190,9 @@ const bst_tabmap BST_MAP_1998_ENG = {
+         [BST_S_ORD_FIRST]= 0x00102400, [BST_S_ORD_TIETH]= 0x00102404,
+         [BST_S_ORD_TH]   = 0x00102408, [BST_S_GRPSEP]   = 0x00102410,
+         [BST_S_PLURAL]   = 0x00102400,
+-        [BST_S_DIGITS]   = 0x00101f76, [BST_S_TENS]     = 0x00101fe0,
+-        [BST_S_TEENS]    = 0x00102058, [BST_S_SCALES]   = 0x00102140,
+-        [BST_S_ZERO]     = 0x00102036,
++        [BST_S_DIGITS]   = 0x00101f7a, [BST_S_TENS]     = 0x00101fe4,
++        [BST_S_TEENS]    = 0x0010205c, [BST_S_SCALES]   = 0x00102140,
++        [BST_S_ZERO]     = 0x0010203a,
+     },
+ };
+ 
+diff --git a/src/tokenise.c b/src/tokenise.c
+index 32bc8fa..3729bfb 100644
+--- a/src/tokenise.c
++++ b/src/tokenise.c
+@@ -577,8 +577,21 @@ static int number_out(bst_tok *t) {
+     while (t->cur >= t->start && !is_digit(t, t->ring[t->cur])) unread(t, 1);
+     int n = t->cur - t->start + 1;
+     if (n <= 0) return 0;
+-    for (int i = 0; i < n; i++)
+-        if (!is_digit(t, t->ring[t->start + i])) return 0;
++
++    /* A colon between two runs of digits gets a state of its own in the
++       transition table, so a time arrives here as a single token, "8:00". A
++       colon is not a digit, so the check below used to reject the whole run;
++       what followed was left to a fallback that never reached the machine and
++       the utterance came out with no sound at all. The colon is a group
++       separator -- the same mark a hyphen between digits becomes -- so each
++       run either side of it is read and nothing is said between them, which
++       is what the hyphen path does. */
++    int has_colon = 0;
++    for (int i = 0; i < n; i++) {
++        int ch = t->ring[t->start + i];
++        if (ch == ':') { has_colon = 1; continue; }
++        if (!is_digit(t, ch)) return 0;
++    }
+     if (t->img->t.num_one_digit && n > 1) return 0;
+     /* The Arabic and Japanese builds have the tables for a number and never
+        reach them: a run of digits leaves no sound at all. */
+@@ -587,6 +600,20 @@ static int number_out(bst_tok *t) {
+         t->kind = 6;
+         return 1;
+     }
++    if (has_colon) {
++        int at = t->start;
++        for (int i = 0; i <= n; i++) {
++            if (i == n || t->ring[t->start + i] == ':') {
++                int len = t->start + i - at;
++                if (len > 0) bst_say_number(t, t->ring + at, len);
++                at = t->start + i + 1;
++            }
++        }
++        if (t->money) say_currency(t, t->ring + t->start, n);
++        t->prevkind = t->kind;
++        t->kind = 6;
++        return 1;
++    }
+     bst_say_number(t, t->ring + t->start, n);
+     if (t->money) say_currency(t, t->ring + t->start, n);
+     t->prevkind = t->kind;
