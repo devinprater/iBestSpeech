@@ -116,41 +116,44 @@ jobs:
             fi
 
             # A shell of an app with no engine in it would still be a valid zip.
-            test "$SIZE" -gt 400000 \
-              || { echo "::error::$BASE is only ${SIZE} bytes -- the engine is not in it"; exit 1; }
+            # The engine's twenty table modules alone are about half a megabyte
+            # each (src_data_2006ENG.o is 497 KB, src_data_1995.o 497 KB), and
+            # the measured binaries are 4.1 MB. 2 MB sits well clear of a build
+            # with no engine in it and well under a real one.
+            test "$SIZE" -gt 2000000 \
+              || { echo "::error::$BASE is only ${SIZE} bytes -- the engine's tables are not in it"; exit 1; }
 
-            # Do NOT look for engine symbols in the BINARY. A Release build sets
-            # STRIP_INSTALLED_PRODUCT=YES, so LC_SYMTAB is gone and nm reports
-            # nothing for a perfectly good build. That was tried and it failed a
-            # green artifact. The engine is checked on the ARCHIVE, below, where
-            # the symbol index does survive.
+            # Do NOT look for engine symbols or table names in the BINARY.
+            # A Release build sets STRIP_INSTALLED_PRODUCT=YES: both were tried
+            # here and both reported nothing for a perfectly good 4.1 MB build.
+            # The engine is checked on the ARCHIVE, below, where its symbol
+            # index survives, and by size above, which the tables dominate.
             echo "$BASE: arm64 iOS, ${SIZE} bytes"
           done
 
-          # A stripped binary still carries its string data. The engine's own
-          # table names are long and distinctive and appear nowhere else -- this
-          # is the check that the engine's TABLES were compiled in, which is the
-          # part NOTICE.md is about, and it survives stripping.
-          TABLES=0
-          for f in "$BIN" "$EXT"; do
-            n=$(strings -a "$f" | grep -cE '^(code_initial|diph_offsets|lts_index|ph_single|casemap|letterattr)$' || true)
-            echo "$(basename "$f"): $n engine table names"
-            TABLES=$((TABLES + n))
-          done
-          test "$TABLES" -ge 6 \
-            || { echo "::error::the engine's tables are not in the binaries -- the app would be silent"; exit 1; }
-
-          # Engine CODE, on the archive that is linked into both binaries. Its
-          # symbol index survives even though the shipped binary is stripped.
+          # Engine CODE, on the archive that is linked into both binaries: its
+          # symbol index survives even though the shipped binaries are stripped,
+          # so this is the one honest way to confirm the engine's code was really
+          # in the build rather than merely hoped for. The size check above
+          # covers the tables, which dominate the binary.
           LIB="$GITHUB_WORKSPACE/iOSProject/Frameworks/OpenBST.xcframework/ios-arm64/libbst_device.a"
           test -f "$LIB" || { echo "::error::the device archive is missing"; exit 1; }
           # llvm-nm, not nm: GNU nm cannot read Mach-O and prints "file format
-          # not recognized" while exiting non-zero, which a careless pipeline
-          # turns into "0 symbols" and a false failure.
+          # not recognized", which a careless pipeline turns into "0 symbols"
+          # and a false failure on a working artifact.
           DEFINED=$(llvm-nm "$LIB" 2>/dev/null | grep -cE '\bT _?bst_')
-          echo "engine functions defined in the archive: $DEFINED"
+          echo "engine functions defined in the linked archive: $DEFINED"
           test "$DEFINED" -ge 8 \
             || { echo "::error::the linked archive defines only $DEFINED engine functions"; exit 1; }
+
+          # The entry points the Swift layer actually calls must be among them.
+          # If any were missing the link would have failed, so this is a cheap
+          # confirmation that the archive is the one the app needs.
+          for sym in bst_open bst_say bst_close bst_get bst_set bst_length; do
+            llvm-nm "$LIB" 2>/dev/null | grep -qE "\bT _?$sym\b" \
+              || { echo "::error::the archive does not define $sym"; exit 1; }
+          done
+          echo "the archive defines the entry points the app calls"
 
           # Every non-system dependency must resolve, or the app installs and
           # then dies at launch. Collect into a file, then fail on a non-empty
