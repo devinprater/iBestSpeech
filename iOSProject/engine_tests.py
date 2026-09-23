@@ -120,8 +120,9 @@ def main():
                       "hello world", "Note: hello", "http://x.com",
                       "Chapter 3: page 5", "It is 5:19 PM.",
                       "Room 07", "The score was 3, 4, 5.",
-                      # the still-open fault, reported below rather than asserted
-                      "Read.6- 23 PM", "Read...6- 23 PM", "Read. 6- 23 PM"])
+                      # a stop written straight against a digit
+                      "Read.6- 23 PM", "Read...6- 23 PM", "Read. 6- 23 PM",
+                      "Read.6:23 PM"])
     # The leading-zero sweep is 1998ENG's own bug.
     texts.update(f"5- {i:02d} PM" for i in range(100))
 
@@ -194,14 +195,30 @@ def main():
         check(length > 0, f"{b}: \"It is 5:19 PM.\" speaks",
               f"got {length} samples")
 
-    print("\n-- the stop-then-digit fault, reported not asserted --")
-    # Not a passing behaviour yet: a full stop running straight into a digit is
-    # silent on every build. Printed rather than asserted so CI shows the state
-    # instead of going red for a fault that is still open.
+    print("\n-- a stop written straight against a digit --")
+    # "Read.6:23 PM" is how an accessibility value often reads, and it used to
+    # leave the machine spinning on one token until its guard expired: no audio
+    # at all. The reading must also match the spaced form.
     for b in BUILDS:
-        for t in ["Read.6- 23 PM", "Read...6- 23 PM", "Read. 6- 23 PM"]:
-            print("  %-8s %-20s %ld samples, %d word token(s)"
-                  % (b, t, r[(b, t)][0], r[(b, t)][1]))
+        spaced = r[(b, "Read. 6- 23 PM")]
+        for t in ["Read.6- 23 PM", "Read...6- 23 PM"]:
+            got = r[(b, t)]
+            check(got[0] > 0, f'{b}: "{t}" speaks', f"got {got[0]} samples")
+    print("\n-- and must read as the same words as the spaced form --")
+    for b in BUILDS:
+        joined = r[(b, "Read.6- 23 PM")]
+        spaced = r[(b, "Read. 6- 23 PM")]
+        # The word tokens, not the sample count: with a space the stop is its own
+        # token and carries a pause, which the joined form has no place for. The
+        # words are what must not change.
+        check(joined[1] == spaced[1], f"{b}: Read.6- 23 PM reads the same words",
+              f"{joined[1]} word tokens vs {spaced[1]}")
+
+    # A time written the same way, so the colon path is covered too.
+    for b in BUILDS:
+        check(r[(b, "Read.6:23 PM")][0] > 0,
+              f"{b}: \"Read.6:23 PM\" speaks",
+              f"got {r[(b, 'Read.6:23 PM')][0]} samples")
 
     print(f"\n{checks - len(failures)}/{checks} passed")
     if failures:

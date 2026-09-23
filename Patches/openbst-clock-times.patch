@@ -1,17 +1,31 @@
-Fix the engine so a digital clock time is read as a time.
+Fix the engine so a clock time is read as a time, and so a stop written
+straight against a digit does not silence the utterance.
 
-  1. number_out() rejected any digit run containing a non-digit. A time
-     arrives there as one token, "8:00", because the transition table
-     gives a digit-flanked colon a state of its own. The run was rejected,
-     what followed fell to a fallback that never reached the machine, and
-     the utterance came out with no sound at all. Each run either side of
-     the colon is now read as a number.
+  1. A digit-flanked colon produced no audio at all. The transition table
+     gives such a colon a state of its own, so a time arrives at
+     number_out() as a single token, "8:00"; that function rejected any
+     run containing a non-digit, and what followed fell to a fallback that
+     never reached the machine. Each run either side of the colon is now
+     read as a number, with nothing said between them -- which is what the
+     hyphen path does, and why its output is byte-identical to spelling
+     the words out.
 
-  2. The 1998 English module's digit-name, tens and teens table addresses
+  2. A run can arrive with a leading character that is not a digit. A stop
+     written straight against a digit -- "Read.6:23 PM", which is how an
+     accessibility value often reads -- restarts the token at the stop, so
+     the run is [".6"]. It was rejected, and the machine was left on the
+     same token, spinning until scan()'s guard expired: no audio at all,
+     and millions of repeats of one line if the tokeniser's trace is on.
+     A space after the stop hid the fault, because the space is eaten and
+     the token restarts on the digit. The leading non-digits are now
+     skipped, so the digits after them are read.
+
+  3. The 1998 English module's digit-name, tens and teens table addresses
      were four bytes low, so every digit resolved one slot into the next
      name -- a single digit read the following digit's name, and a
      two-digit run of 10 or less ran off the end of the table. That is the
      "minutes starting with a zero are read as a long sequence" fault.
+     The other five 1998 languages copy this map address for address.
 
 Apply from the root of an openbst checkout:
     git apply Patches/openbst-clock-times.patch
@@ -34,15 +48,28 @@ index f8acae3..4f75551 100644
  };
  
 diff --git a/src/tokenise.c b/src/tokenise.c
-index 32bc8fa..3729bfb 100644
+index 32bc8fa..538e13a 100644
 --- a/src/tokenise.c
 +++ b/src/tokenise.c
-@@ -577,8 +577,21 @@ static int number_out(bst_tok *t) {
+@@ -577,8 +577,34 @@ static int number_out(bst_tok *t) {
      while (t->cur >= t->start && !is_digit(t, t->ring[t->cur])) unread(t, 1);
      int n = t->cur - t->start + 1;
      if (n <= 0) return 0;
 -    for (int i = 0; i < n; i++)
 -        if (!is_digit(t, t->ring[t->start + i])) return 0;
++
++    /* A run can arrive with a leading character that is not a digit. A stop
++       written straight against a digit -- "Read.6:23 PM" -- restarts the token
++       at the stop, so the run is [".6"]. The stop has already been given its
++       meaning by the punctuation transition; what is left here is the digits.
++       Without this the whole run was rejected and the machine was left on the
++       same token, spinning until its guard expired: the utterance came out with
++       no sound at all, and the same guard filled the log with millions of
++       repeats of one line. A space after the stop did not show the fault
++       because the space is eaten and the token restarts on the digit. */
++    while (t->start <= t->cur && !is_digit(t, t->ring[t->start])) t->start++;
++    n = t->cur - t->start + 1;
++    if (n <= 0) return 0;
 +
 +    /* A colon between two runs of digits gets a state of its own in the
 +       transition table, so a time arrives here as a single token, "8:00". A
@@ -61,7 +88,7 @@ index 32bc8fa..3729bfb 100644
      if (t->img->t.num_one_digit && n > 1) return 0;
      /* The Arabic and Japanese builds have the tables for a number and never
         reach them: a run of digits leaves no sound at all. */
-@@ -587,6 +600,20 @@ static int number_out(bst_tok *t) {
+@@ -587,6 +613,20 @@ static int number_out(bst_tok *t) {
          t->kind = 6;
          return 1;
      }
