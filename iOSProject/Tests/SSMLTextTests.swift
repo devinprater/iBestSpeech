@@ -320,6 +320,12 @@ struct SSMLTextTests {
             print("FAIL  no German description was produced")
         }
 
+        // The dictionary has overlapping entries -- "iPad" is a prefix of
+        // "iPadOS" -- so the longer term must be tried first, or the shorter one
+        // rewrites part of it and leaves the longer word mangled.
+        expect("<speak>iPadOS apps</speak>", "eye pad oh ess apps",
+               "the longer term wins over its prefix")
+        expect("<speak>iPad apps</speak>", "eye pad apps", "the shorter term alone")
         print("\n-- the pronunciation dictionary --")
         // The engine reads an unknown compound as one word: "FaceTime"'s token
         // stream is identical to "facetime", so it is one odd word rather than

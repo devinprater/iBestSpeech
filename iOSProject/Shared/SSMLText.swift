@@ -654,17 +654,39 @@ public enum SSMLText {
     /// what keeps a term like "AI" from rewriting the same letters inside a
     /// French word.
     static func applyPronunciations(_ text: String) -> String {
-        guard !Pronunciations.ordered.isEmpty else { return text }
         var result = text
-        for (term, replacement) in Pronunciations.ordered {
-            // Longest first in the table, so "iPadOS" is settled before "iPad".
-            result = replacing(result,
-                               pattern: "\\b" + NSRegularExpression.escapedPattern(for: term) + "\\b") {
-                _ in replacement
-            }
+        for entry in compiledPronunciations {
+            // The literal check first: a term that does not appear cannot match
+            // its own word-boundary pattern, and `contains` is far cheaper than
+            // a regex. Almost every entry stops here on any given utterance.
+            guard result.contains(entry.term) else { continue }
+            let range = NSRange(result.startIndex..., in: result)
+            result = entry.regex.stringByReplacingMatches(in: result, options: [],
+                                                          range: range,
+                                                          withTemplate: entry.template)
         }
         return result
     }
+
+    /// The dictionary compiled once, longest term first.
+    ///
+    /// Compiling on every utterance would mean roughly 480 regex builds per
+    /// piece for a table where a handful of terms at most will be present, so
+    /// this is built on first use and kept. Longest first so "iPadOS" is settled
+    /// before "iPad", since both would otherwise match at the same position.
+    private static let compiledPronunciations: [(term: String, regex: NSRegularExpression,
+                                                 template: String)] = {
+        Pronunciations.ordered
+            .sorted { $0.0.count > $1.0.count }
+            .compactMap { term, replacement in
+                let pattern = "\\b" + NSRegularExpression.escapedPattern(for: term) + "\\b"
+                guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+                // The replacement is literal: escape the group reference syntax
+                // so a term containing "$" cannot corrupt the template.
+                let template = NSRegularExpression.escapedTemplate(for: replacement)
+                return (term, regex, template)
+            }
+    }()
 
     /// `say-as` handling.
     ///
