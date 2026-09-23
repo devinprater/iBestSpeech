@@ -144,7 +144,7 @@ Cryptocurrency	crypto currency
 Blockchain	block chain
 bottleneck	bottle neck
 Bottleneck	bottle neck
-PizzaCat	pih zuh cat
+PizzaCat	pizza cat
 Smartphone	smart phone
 Smartwatch	smart watch
 Ebook	e book

@@ -398,10 +398,8 @@ struct SSMLTextTests {
         // "bottleneck" voices its double-t and flattens its middle: "bottle"
         // plus "neck" are both clean words the engine already reads well.
         expect("<speak>bottleneck</speak>", "bottle neck", "bottleneck is split")
-        // A display name, read to spec: short i, a z instead of the usual ts.
-        // "piz" is just "pih" (no z in it at all); "zuh" carries the real z
-        // phoneme with a schwa ending, as the word ends.
-        expect("<speak>PizzaCat</speak>", "pih zuh cat", "PizzaCat to spec")
+        // A display name: the ordinary word "pizza" (usual ts) plus "cat".
+        expect("<speak>PizzaCat</speak>", "pizza cat", "PizzaCat splits")
         // A comma the user wrote ended the text on the thirteen 2006 builds:
         // "Reddit, Yesterday" was byte-identical to "Reddit" alone on 2006ENG.
         // A colon keeps both words and matches the comma sample-for-sample

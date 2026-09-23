@@ -56,7 +56,7 @@ enum Pronunciations {
         ("Username", "user name"),
         ("Filename", "file name"),
         ("Hostname", "host name"),
-        ("PizzaCat", "pih zuh cat"),
+        ("PizzaCat", "pizza cat"),
         ("Homepage", "home page"),
         ("Firewall", "fire wall"),
         ("Discord", "Dis cord"),
