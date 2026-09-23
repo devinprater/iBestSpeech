@@ -110,6 +110,8 @@ enum Pronunciations {
         ("emoji", "eh moe jee"),
         ("ASCII", "ass key"),
         ("UTF-8", "U T F eight"),
+        ("Devin", "Dev in"),
+        ("devin", "Dev in"),
         ("Ebook", "e book"),
         ("eBook", "e book"),
         ("ebook", "e book"),

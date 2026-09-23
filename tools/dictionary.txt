@@ -143,6 +143,8 @@ Bitcoin	bit coin
 Cryptocurrency	crypto currency
 Blockchain	block chain
 bottleneck	bottle neck
+Devin	Dev in
+devin	Dev in
 Bottleneck	bottle neck
 PizzaCat	pizza cat
 Smartphone	smart phone
