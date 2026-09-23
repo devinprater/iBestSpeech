@@ -11,6 +11,20 @@ enum LanguageDetectorTests {
     static var checks = 0
     static var failures: [String] = []
 
+    /// The string must not be read as some OTHER language. English or nothing
+    /// are both acceptable; "es" is not, and that is the bug this encodes.
+    static func expectNotForeign(_ text: String, _ label: String) {
+        checks += 1
+        let got = LanguageDetector.language(of: text)
+        if got == nil || got == "en" {
+            print("PASS  \(label)")
+        } else {
+            let failure = "\(label): \(text.prefix(40)) was read as \(got!)"
+            failures.append(failure)
+            print("FAIL  \(failure)")
+        }
+    }
+
     static func expect(_ text: String, _ expected: String?, _ label: String) {
         checks += 1
         let got = LanguageDetector.language(of: text)
@@ -48,6 +62,39 @@ enum LanguageDetectorTests {
         expect("O cachorro está em casa e não quer sair com a gente", "pt", "Portuguese")
         expect("Pies jest w domu i nie chce wyjść na zewnątrz", "pl", "Polish")
 
+        print("\n-- English UI strings must never come out as another language --")
+        // Measured bug: "No Updates Available" was read as Spanish, because
+        // "No" is a Spanish word and nothing in three words outvoted it. This
+        // shape -- "No <Noun> <Adjective>" -- is everywhere in an OS.
+        expectNotForeign("No Updates Available", "No Updates Available")
+        expectNotForeign("No updates available", "No updates available")
+        expectNotForeign("No SIM Card", "No SIM Card")
+        expectNotForeign("No Internet Connection", "No Internet Connection")
+        expectNotForeign("No Results", "No Results")
+        expectNotForeign("Not Connected", "Not Connected")
+        expectNotForeign("Sign in to your account", "Sign in to your account")
+        expectNotForeign("Enter your password", "Enter your password")
+        expectNotForeign("Unable to load content", "Unable to load content")
+        expectNotForeign("The request timed out", "The request timed out")
+        expectNotForeign("This app is not available in your region",
+                         "not available in your region")
+        expectNotForeign("Your session has expired. Please sign in again.",
+                         "session expired")
+        expectNotForeign("Do Not Disturb", "Do Not Disturb")
+        expectNotForeign("Screen Time", "Screen Time")
+        expectNotForeign("Face ID & Passcode", "Face ID & Passcode")
+        expectNotForeign("Software Update", "Software Update")
+        expectNotForeign("Airplane Mode", "Airplane Mode")
+        expectNotForeign("No Items", "No Items")
+        expectNotForeign("Loading", "Loading")
+        expectNotForeign("Cancel", "Cancel")
+        expectNotForeign("Settings", "Settings")
+        expectNotForeign("Battery", "Battery")
+        expectNotForeign("Storage", "Storage")
+        expectNotForeign("Share", "Share")
+        expectNotForeign("Delete", "Delete")
+        expectNotForeign("Retry", "Retry")
+
         print("\n-- and it must decline when the evidence is thin --")
         // These are exactly the cases a guess would get wrong, and a wrong
         // switch changes the voice the user hears.
@@ -58,10 +105,11 @@ enum LanguageDetectorTests {
         // "la" is a word in French, Spanish and Italian, so the score is a
         // three-way tie and nothing is claimed.
         expect("la", nil, "a word three languages share claims nothing")
-        // "la" scores the same for French, Spanish and Italian however often it
-        // appears, which is a real tie. (Not "de a": both are Portuguese words,
-        // so Portuguese wins that one outright.)
-        expect("la la la", nil, "a word three languages share claims nothing")
+        // A word several of these languages share gives no clear winner, so a
+        // text made only of it must decline rather than pick whichever list
+        // happens to be longer.
+        expect("als", nil, "a word several languages share claims nothing")
+        expect("como", nil, "another shared word claims nothing")
         // One hit out of two words is below the short-text threshold.
         expect("hello the", nil, "one match in two words is not enough")
 

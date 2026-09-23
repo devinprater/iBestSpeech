@@ -140,28 +140,144 @@ public enum LanguageDetector {
     private static let functionWords: [String: Set<String>] = [
         "en": ["the", "and", "is", "are", "you", "of", "to", "in", "it", "that",
                "was", "for", "on", "with", "as", "at", "be", "this", "have",
-               "from", "not", "but", "they", "we", "what", "there", "when"],
+               "from", "not", "but", "they", "we", "what", "there", "when",
+               "no", "your", "our", "will", "can", "if", "my", "all", "has",
+               "been", "would", "should", "could", "about", "than", "them",
+               "these", "may", "its", "up", "out", "do", "so", "any", "how"],
         "de": ["der", "die", "das", "und", "ist", "nicht", "ein", "eine", "mit",
                "sich", "auf", "für", "von", "dem", "den", "zu", "im", "auch",
-               "als", "aber", "wenn", "wir", "sie", "noch", "nur"],
+               "als", "aber", "wenn", "wir", "sie", "noch", "nur", "werden",
+               "wird", "kann", "muss", "sind", "war", "haben", "hat", "dieser",
+               "diese", "dieses", "nach", "bei", "aus", "durch", "gegen"],
         "fr": ["le", "la", "les", "des", "est", "et", "un", "une", "que", "qui",
                "dans", "pour", "pas", "vous", "avec", "sur", "ce", "il", "elle",
-               "nous", "mais", "plus", "au", "aux", "je"],
-        "es": ["el", "la", "los", "las", "de", "que", "y", "en", "un", "una",
+               "nous", "mais", "plus", "au", "aux", "je", "son", "sa", "ses",
+               "sont", "cette", "cet", "ont", "fait", "peut", "tout", "sans",
+               "sous", "entre", "aussi", "comme"],
+        "es": ["el", "los", "las", "de", "que", "y", "en", "un", "una",
                "es", "por", "con", "para", "no", "se", "su", "al", "del", "lo",
-               "como", "más", "pero", "yo", "este"],
-        "it": ["il", "la", "le", "di", "che", "e", "un", "una", "per", "con",
+               "como", "más", "pero", "yo", "este", "esta", "estos",
+               "estas", "son", "fue", "han", "puede", "todo", "sin", "sobre",
+               "entre", "cuando", "porque", "tiene"],
+        "it": ["il", "le", "di", "che", "e", "un", "una", "per", "con",
                "non", "si", "del", "al", "sono", "questo", "come", "più", "ma",
-               "io", "gli", "della", "anche"],
+               "io", "gli", "della", "anche", "questo", "questa", "sono",
+               "stato", "hanno", "può", "tutto", "senza", "tra", "fra"],
         "nl": ["de", "het", "een", "en", "van", "is", "dat", "op", "te", "voor",
                "met", "zijn", "niet", "aan", "er", "ook", "als", "maar", "wij",
-               "ze", "nog", "naar"],
-        "pt": ["o", "a", "os", "as", "de", "que", "e", "do", "da", "em", "um",
+               "ze", "nog", "naar", "wordt", "kan", "moet", "was", "heeft",
+               "deze", "dit", "door", "over", "tussen", "zonder"],
+        "pt": ["o", "os", "as", "de", "que", "e", "do", "da", "em", "um",
                "uma", "é", "para", "com", "não", "se", "por", "como", "mais",
-               "mas", "eu", "este", "são"],
+               "mas", "eu", "este", "são", "esta", "foi", "tem", "pode",
+               "tudo", "sem", "sobre", "entre", "quando", "porque"],
         "pl": ["i", "w", "na", "z", "do", "że", "się", "nie", "jest", "to", "o",
                "a", "jak", "po", "tak", "ale", "dla", "od", "czy", "ja", "ze",
-               "oraz", "przez"],
+               "oraz", "przez", "jest", "są", "był", "ma", "może", "wszystko",
+               "bez", "nad", "pod", "między", "kiedy", "ponieważ"],
+    ]
+
+    /// Words that exist in exactly one of these languages.
+    ///
+    /// One of these is proof, the same way a Cyrillic letter is: no other
+    /// language in this set has the string at all. They matter because the
+    /// function-word lists are full of short, shared, ambiguous entries -- "no"
+    /// is English AND Spanish, "de" is four of them -- so a three-word English
+    /// string like "No Updates Available" can score for Spanish on the strength
+    /// of one word. "Available" cannot be anything but English.
+    /// Words that exist in exactly one of these languages.
+    ///
+    /// One of these is proof, the same way a Cyrillic letter is: no other
+    /// language in this set has the string at all. They matter because the
+    /// function-word lists are full of short, shared, ambiguous entries -- "no"
+    /// is English AND Spanish, "de" is four of them -- so a three-word English
+    /// string like "No Updates Available" can score for Spanish on the strength
+    /// of one word. "Available" cannot be anything but English.
+    ///
+    /// Every word here is checked to appear in no other list. A word two
+    /// languages share is not proof of either, and leaving one in makes the
+    /// answer depend on dictionary iteration order -- which is how
+    /// "Sign in to your account" was once read as Dutch.
+    /// Words that exist in exactly one of these languages.
+    ///
+    /// One of these is proof, the same way a Cyrillic letter is: no other
+    /// language in this set has the string at all. They matter because the
+    /// function-word lists are full of short, shared, ambiguous entries -- "no"
+    /// is English AND Spanish, "de" is four of them -- so a three-word English
+    /// string like "No Updates Available" can score for Spanish on the strength
+    /// of one word. "Available" cannot be anything but English.
+    ///
+    /// Exclusivity is computed, not assumed. Romance languages genuinely share
+    /// strings ("disponible" is French and Spanish), and a word two languages
+    /// share cannot be decisive -- keeping one makes the answer depend on
+    /// dictionary iteration order, which is how "Sign in to your account" was
+    /// once read as Dutch. Only words unique to a single list appear below.
+    private static let exclusiveWords: [String: Set<String>] = [
+        "de": ["akku", "aktualisierung", "anmelden", "bearbeiten",
+               "benachrichtigung", "datei", "dateien", "einstellungen",
+               "entsperren", "erfolgreich", "erforderlich", "geladen",
+               "gerät", "installiert", "kalender", "kamera", "ladung",
+               "löschen", "möglich", "nachricht", "netzwerk", "notizen",
+               "passwort", "schließen", "speicher", "suchen", "teilen",
+               "verbunden", "verfügbar", "wetter", "zugriff", "öffnen",
+        ],
+        "en": ["airplane", "available", "battery", "bluetooth",
+               "brightness", "calendar", "camera", "cancel", "charging",
+               "complete", "completed", "connected", "connection",
+               "content", "copy", "could", "delete", "disabled", "display",
+               "download", "downloads", "edit", "enabled", "expired",
+               "failed", "installed", "keyboard", "loading", "network",
+               "notifications", "paste", "please", "privacy", "region",
+               "removed", "request", "retry", "screen", "scroll", "search",
+               "security", "settings", "share", "should", "sign",
+               "started", "stopped", "storage", "successfully", "swipe",
+               "timed", "unable", "updates", "volume", "warning",
+               "weather", "wifi", "would",
+        ],
+        "es": ["acceso", "ajustes", "almacenamiento", "archivo",
+               "archivos", "batería", "bloqueo", "buscar", "carga",
+               "cerrar", "compartir", "conexión", "contraseña",
+               "correctamente", "cuenta", "cámara", "imposible", "iniciar",
+               "mensaje", "necesario", "notificación", "red", "sesión",
+        ],
+        "fr": ["accès", "appareil", "batterie", "calendrier", "charge",
+               "compte", "connecter", "connecté", "connexion",
+               "déverrouiller", "fermer", "fichier", "fichiers",
+               "impossible", "installé", "message", "modifier", "météo",
+               "notes", "notification", "nécessaire", "ouvrir",
+               "paramètres", "partager", "photos", "rechercher", "réseau",
+               "réussi", "stockage", "supprimer", "verrouillage",
+        ],
+        "it": ["accedi", "accesso", "apri", "archiviazione", "batteria",
+               "blocco", "carica", "cerca", "chiudi", "condividi",
+               "connessione", "connesso", "correttamente", "disponibile",
+               "elimina", "file", "foto", "fotocamera", "impossibile",
+               "impostazioni", "installato", "messaggio", "meteo",
+               "modifica", "necessario", "note", "notifica", "rete",
+               "sblocca",
+        ],
+        "nl": ["aanmelden", "agenda", "apparaat", "batterij", "bericht",
+               "beschikbaar", "bestand", "bestanden", "bewerken", "delen",
+               "geslaagd", "geïnstalleerd", "instellingen", "melding",
+               "netwerk", "nodig", "notities", "onmogelijk",
+               "ontgrendelen", "openen", "opladen", "opslag", "sluiten",
+               "toegang", "verbinding", "verbonden", "vergrendeling",
+               "verwijderen", "wachtwoord", "weer", "zoeken",
+        ],
+        "pl": ["aparat", "blokada", "dostęp", "dostępny", "edytuj",
+               "hasło", "kalendarz", "niemożliwe", "notatki", "odblokuj",
+               "otwórz", "pamięć", "plik", "pliki", "pogoda",
+               "powiadomienie", "połączenie", "połączony", "sieć",
+               "szukaj", "udostępnij", "urządzenie", "ustawienia", "usuń",
+               "wiadomość", "wymagane", "zainstalowano", "zaloguj",
+               "zamknij", "zdjęcia", "ładowanie",
+        ],
+        "pt": ["acesso", "armazenamento", "arquivo", "arquivos",
+               "bloqueio", "calendário", "carregando", "compartilhar",
+               "conexão", "conta", "câmera", "definições", "disponível",
+               "entrar", "fechar", "impossível", "mensagem", "necessário",
+               "notificação", "palavra", "pesquisar", "rede",
+        ],
     ]
 
     /// How much evidence a language needs before it is claimed.
@@ -181,9 +297,25 @@ public enum LanguageDetector {
     private static let minimumWordsForOneHit = 3
 
     private static func latinLanguage(of text: String) -> String? {
-        let words = text.lowercased()
+        let all = text.lowercased()
             .split(whereSeparator: { !$0.isLetter })
             .map(String.init)
+        guard !all.isEmpty else { return nil }
+
+        // A word that exists in exactly one of these languages settles it. This
+        // is the stage that stops "No Updates Available" being read as Spanish
+        // on the strength of the single word "no".
+        for (language, list) in exclusiveWords
+        where all.contains(where: { list.contains($0) }) {
+            return language
+        }
+
+        // Every word counts, including the short ones: "no", "la", "en" and "el"
+        // are most of the signal in a sentence like "El perro esta en la casa y
+        // no quiere salir". A short word deciding a language on its own was the
+        // old bug, but the exclusive-word stage above is what fixes that now --
+        // filtering by length here would lose the Spanish.
+        let words = all
         guard !words.isEmpty else { return nil }
 
         let requiredHits = words.count < minimumWordsForOneHit ? 2 : 1

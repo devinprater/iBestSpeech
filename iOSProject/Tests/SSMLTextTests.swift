@@ -334,7 +334,10 @@ struct SSMLTextTests {
         expect("<speak>iPhone</speak>", "eye phone", "iPhone")
         expect("<speak>AirDrop</speak>", "air drop", "AirDrop")
         expect("<speak>WiFi</speak>", "why fye", "WiFi")
-        expect("<speak>SQL</speak>", "ess cue ell", "SQL")
+        // Not in the dictionary, because the engine already reads "SQL" as
+        // "ess cue ell" on its own -- the audio is byte-identical to the native
+        // reading. It must pass through untouched.
+        expect("<speak>SQL</speak>", "SQL", "SQL is left alone (the engine spells it)")
         expect("<speak>iPadOS</speak>", "eye pad oh ess", "iPadOS beats iPad")
         expect("<speak>Send it over FaceTime now</speak>",
                "Send it over Face Time now", "a term inside a sentence")

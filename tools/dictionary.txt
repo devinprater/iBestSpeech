@@ -12,8 +12,22 @@
 # unknown word (its token stream is identical to "facetime"), not as "face time".
 # An entry that matches what the engine already says is a wasted lookup, so check
 # before adding: see tools/build_tables.py --check.
+#
+# Two entries spell a word rather than the letters, on purpose: ASCII and
+# OSHA are said as words ("ass key", "oh shah"), not letter by letter.
+# Everything else that spells letters uses the LETTERS THEMSELVES, spaced.
+# A phonetic name is not safe here: this engine reads "ay" as the word
+# "aye", not as the letter A, which is how "FAQ" once came out "F I Q".
+# An all-caps run the engine already spells needs no entry at all -- it
+# reads "PDF" and "URL" letter by letter on its own.
 
 # --- Apple product names: read as one word, so the parts have to be spelled ---
+#
+# Two entries spell a word rather than the letters, on purpose: ASCII and
+# OSHA are said as words ("ass key", "oh shah"), not letter by letter.
+# Everything else that spells letters uses the LETTERS THEMSELVES, spaced.
+# A phonetic name is not safe here: this engine reads "ay" as the word
+# "aye", not as the letter A, which is how "FAQ" once came out "F I Q".
 FaceTime	Face Time
 FaceTimeAudio	Face Time Audio
 iPhone	eye phone
@@ -43,83 +57,45 @@ Xcode	ex code
 Wi-Fi	why fye
 WiFi	why fye
 Bluetooth	blue tooth
-BluetoothLE	blue tooth el ee
+BluetoothLE	Bluetooth L E
 Ethernet	ee ther net
 AirPort	air port
-VPN	vee pee en
-DNS	dee en ess
-IP	eye pee
+IP	I P
 IPv4	eye pee vee four
 IPv6	eye pee vee six
-URL	you are ell
-URI	you are eye
-HTTP	aitch tee tee pee
-HTTPS	aitch tee tee pee ess
-HTML	aitch tee em ell
-CSS	see ess ess
-XML	ex em ell
-JSON	jay son
-API	ay pee eye
-API's	ay pee eye's
-REST	rest
+URI	U R I
+API	A P I
+API's	A P I's
 WebSocket	web socket
-SSH	ess ess aitch
-SFTP	ess eff tee pee
-FTP	eff tee pee
 
 # --- Files and formats ---
-PDF	pee dee eff
-JPEG	jay peg
-JPG	jay peg
-PNG	ping
-GIF	jif
-TIFF	tiff
-SVG	ess vee gee
+GIF	G I F
+TIFF	T I F F
 MP3	em pee three
 MP4	em pee four
-WAV	wave
-MIDI	mid ee
-CSV	see ess vee
-ZIP	zip
-RAR	rar
-DMG	dee em gee
-ISO	eye ess oh
-EXE	ee ex ee
-TXT	text
+MIDI	M I D I
+ZIP	Z I P
+ISO	I S O
 
 # --- Devices and hardware ---
-CPU	see pee you
-GPU	gee pee you
-SSD	ess ess dee
-HDD	aitch dee dee
-USB	you ess bee
-HDMI	aitch dee em eye
-LED	ell ee dee
-LCD	ell see dee
-OLED	oh led
-SIM	sim
+HDMI	H D M I
+SIM	S I M
 eSIM	ee sim
-NFC	en eff see
-QR	queue are
-SSID	ess ess eye dee
+SSID	S S I D
 5G	five gee
 4G	four gee
-LTE	ell tee ee
 SoC	ess oh see
 
 # --- Software and computing ---
 Linux	Linn ex
 Ubuntu	oo boon too
 Debian	Deb ee an
-GNU	guh noo
 MySQL	my ess cue ell
-SQL	ess cue ell
 SQLite	ess cue lite
 PostgreSQL	post gres cue ell
 JavaScript	java script
 TypeScript	type script
 Python	pie thon
-npm	en pee em
 GitHub	git hub
 GitLab	git lab
 BitTorrent	bit torrent
@@ -127,18 +103,15 @@ Emoji	eh moe jee
 emoji	eh moe jee
 Unicode	you ni code
 ASCII	ass key
-UTF-8	you tee eff eight
-CLI	see ell eye
-SDK	ess dee kay
-IDE	eye dee ee
-GUI	gooey
-OS	oh ess
-BIOS	bye oss
+UTF-8	U T F eight
+CLI	C L I
+IDE	I D E
+GUI	G U I
+BIOS	B I O S
 Firmware	firm ware
 Malware	mal ware
 Ransomware	ran som ware
 Captcha	cap cha
-Login	Log in
 Logout	Log out
 Username	user name
 Filename	file name
@@ -166,17 +139,9 @@ Homepage	home page
 Firewall	fire wall
 Screenshot	screen shot
 Touchscreen	touch screen
-Meme	meem
-Meme's	meem's
-AI	ay eye
-LLM	ell ell em
-GPT	gee pee tee
-NFT	en eff tee
+AI	A I
 IoT	eye oh tee
 OSHA	oh shah
-FAQ	eff ay cue
-ASAP	ay sap
-RSVP	are ess vee pee
 etc.	et cetera
 i.e.	that is
 e.g.	for example
