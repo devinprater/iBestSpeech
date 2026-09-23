@@ -81,8 +81,7 @@ count with **no word tokens at all**.
 The descriptions come from the Unicode Common Locale Data Repository, from the
 same `tts` annotation and the same mirror that NVDA turns into its emoji symbol
 dictionaries (`nvaccess/nvda#8758`), in the language the voice speaks —
-`😀` is "grinning face" in English and "grinsendes Gesicht" in German. 3,870
-entries in English, 31,331 across the thirteen locales, generated into
+`😀` is "grinning face" in English and "grinsendes Gesicht" in German. 3,870 entries in English, 29,982 across the thirteen locales, generated into
 `Shared/CLDRText.swift` by `tools/build_tables.py`.
 
 Two things the raw data cannot be used for, both measured:
