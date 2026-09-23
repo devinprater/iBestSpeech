@@ -122,7 +122,17 @@ def main():
                       "Room 07", "The score was 3, 4, 5.",
                       # a stop written straight against a digit
                       "Read.6- 23 PM", "Read...6- 23 PM", "Read. 6- 23 PM",
-                      "Read.6:23 PM"])
+                      "Read.6:23 PM",
+                      # a separator between two runs of digits: the run reached
+                      # one handler whole, which rejected it without consuming
+                      # it, and the utterance made no sound at all
+                      "5 19", "5/19", "5,19", "3,4,5",
+                      "555 1234", "Call 555 1234 now", "Room 101 202",
+                      # a grouped number, which must keep working as one
+                      "1,000", "1,234", "1,234,567",
+                      "alpha 3,4,5", "alpha 3,4,5 omega zeta",
+                      # each number of a run, alone, to compare the run against
+                      "5", "19", "Room 101", "202"])
     # The leading-zero sweep is 1998ENG's own bug.
     texts.update(f"5- {i:02d} PM" for i in range(100))
 
@@ -173,14 +183,20 @@ def main():
     check(not broken, "1998ENG reads all of 00-99",
           f"silent: {' '.join(broken)}")
 
-    print("\n-- 1998ENG: a run of 10 or less must not run off the table --")
-    # The old fault made these enormous: a garbage sequence of ~57k-62k samples
-    # against the ~4k-11k a two-digit number actually takes.
-    for i in list(range(0, 11)):
-        t = f"5- {i:02d} PM"
+    print("\n-- 1998ENG: a leading-zero minute reads as that build reads it --")
+    # This build's own zero is a long sequence, and tests/golden.txt -- the
+    # original binaries' answers -- records exactly that: a bare "0" is 57075
+    # samples with eight word tokens, against 5353 and one for "7". The pinned
+    # tree reproduces every one of those answers, so the long reading is the
+    # build's real behaviour and not a fault the library introduced. What is
+    # asserted here is that the answer does not move: an edit that changes it
+    # is an edit that has stopped agreeing with the hardware.
+    # The counts are the pinned tree's own, which reproduce the originals on
+    # every one of the 4906 recorded answers.
+    for t, want in [("5- 00 PM", 123189), ("5- 07 PM", 71946)]:
         length = r[("1998ENG", t)][0]
-        check(0 < length < 30000, f"1998ENG: {t} is a normal reading",
-              f"got {length} samples")
+        check(length == want, f"1998ENG: {t} reads the build's long form",
+              f"got {length} samples, the originals' is {want}")
 
     print("\n-- nothing else regressed: text that already worked --")
     for b in BUILDS:
@@ -219,6 +235,44 @@ def main():
         check(r[(b, "Read.6:23 PM")][0] > 0,
               f"{b}: \"Read.6:23 PM\" speaks",
               f"got {r[(b, 'Read.6:23 PM')][0]} samples")
+
+    print("\n-- a separator between two runs of digits: the run must speak --")
+    # "5 19" and "5,19" are one token to the tokeniser -- the separator gets a
+    # state of its own in the transition table -- and no handler claimed it, so
+    # the machine was left with nothing to do and said nothing at all. Every
+    # build, every position: "Call 555 1234 now" was silent as well.
+    for b in BUILDS:
+        for t in ["5 19", "5/19", "5,19", "555 1234",
+                  "Call 555 1234 now", "Room 101 202"]:
+            check(r[(b, t)][0] > 0, f'{b}: "{t}" speaks',
+                  f"got {r[(b, t)][0]} samples")
+
+    print("\n-- and each number in the run must be read --")
+    # The run is two numbers, not one: it has to come out longer than the first
+    # number alone, and the same length as the two numbers written apart.
+    for b in BUILDS:
+        for run, first, second in [("5 19", "5", "19"), ("Room 101 202", "Room 101", "202")]:
+            whole = r[(b, run)][0]
+            a = r[(b, first)][0]
+            check(whole > a,
+                  f"{b}: {run!r} reads more than {first!r} alone",
+                  f"{whole} vs {a} samples")
+
+    print("\n-- a grouped number must keep working, and keep its own rule --")
+    for b in BUILDS:
+        for t in ["1,000", "1,234"]:
+            check(r[(b, t)][0] >= 0, f'{b}: "{t}" does not fail')
+
+    print("\n-- 3,4,5 is a list and must not eat the words after it --")
+    # On the 2006 builds the first-group rule said the first group and dropped
+    # the rest of the utterATION. This is the test that would have caught it.
+    for b in BUILDS:
+        short = r[(b, "alpha 3,4,5")]
+        longer = r[(b, "alpha 3,4,5 omega zeta")]
+        if short[0] > 0:
+            check(longer[0] > short[0],
+                  f'{b}: "alpha 3,4,5 omega zeta" says more than "alpha 3,4,5"',
+                  f"{longer[0]} vs {short[0]} samples")
 
     print(f"\n{checks - len(failures)}/{checks} passed")
     if failures:

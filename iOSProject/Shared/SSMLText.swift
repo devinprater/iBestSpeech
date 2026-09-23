@@ -20,8 +20,9 @@ import Foundation
 ///   "1234" alone are fine, and "555-1234" or "3, 4, 5" are fine. The engine's
 ///   number parser fails when the next token begins with a number, and its own
 ///   test corpus never covers the case. `separateAdjacentNumbers` inserts the
-///   comma that keeps it working; a short pause between numbers is natural speech
-///   anyway, and the alternative is silence.
+///   colon that keeps it working; a short pause between numbers is natural speech
+///   anyway, and the alternative is silence. A colon rather than a comma, because
+///   a comma ends the text outright on the 2006 builds -- see that function.
 ///
 /// This is in `Shared/` so both targets see it, and so the tests can compile this
 /// exact file rather than a copy that drifts.
@@ -566,24 +567,35 @@ public enum SSMLText {
     ///
     /// Two numbers separated only by whitespace make the engine produce no audio
     /// at all — the whole utterance, not just the numbers. Separating them with a
-    /// comma, which the engine reads as a short pause, restores it: measured
+    /// **colon**, which the engine reads as a short pause, restores it: measured
     /// silent-to-spoken on "555 1234", "10 20 30", "Version 2 0 2 6" and
     /// "Room 101 202" across the 1995, 2006ENG, 2006GER, 2006SPA and 2006FRE
     /// builds, with no case left silent.
+    ///
+    /// The colon is load-bearing, and a comma will not do. Where the comma works
+    /// at all the colon is **byte-identical** to it — "hello, world" and
+    /// "hello: world" are 13839 samples each on 1995, 13869 on 1998ENG — but on
+    /// every one of the thirteen 2006 builds a comma **ends the text**: the comma
+    /// and everything after it is never spoken. "Room 101, 202 and more words
+    /// here" says "Room 101" and stops, which is what this function used to
+    /// produce. The colon keeps the tail on those builds, and on all twenty.
+    ///
+    /// A comma the user wrote is left alone. This only replaces the comma this
+    /// function inserts.
     static func separateAdjacentNumbers(_ text: String) -> String {
         let characters = Array(text)
         var output: [Character] = []
         output.reserveCapacity(characters.count + 8)
 
         for (index, character) in characters.enumerated() {
-            // The comma goes before the space, not after it: appending the space
+            // The mark goes before the space, not after it: appending the space
             // first produced "555 ,1234", which reads as a odd pause mid-word
             // rather than a pause between two numbers.
             if character == " ",
                index > 0, index + 1 < characters.count,
                characters[index - 1].isNumber,
                characters[index + 1].isNumber {
-                output.append(",")
+                output.append(":")
             }
             output.append(character)
         }

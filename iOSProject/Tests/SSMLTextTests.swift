@@ -62,12 +62,14 @@ struct SSMLTextTests {
                "the exact failing case")
 
         print("\n-- the silence bug: adjacent numbers produce no audio at all --")
-        expect("<speak>555 1234</speak>", "555, 1234", "two numbers are separated")
-        expect("<speak>10 20 30</speak>", "10, 20, 30", "a run of numbers is separated")
-        expect("<speak>The score was 3 4 5.</speak>", "The score was 3, 4, 5.",
+        // A colon, not a comma: a comma ends the text on every 2006 build, so
+        // the words after the number were never spoken.
+        expect("<speak>555 1234</speak>", "555: 1234", "two numbers are separated")
+        expect("<speak>10 20 30</speak>", "10: 20: 30", "a run of numbers is separated")
+        expect("<speak>The score was 3 4 5.</speak>", "The score was 3: 4: 5.",
                "numbers inside a sentence")
-        expect("<speak>Room 101 202</speak>", "Room 101, 202", "numbers after a word")
-        expect("<speak>Version 2 0 2 6</speak>", "Version 2, 0, 2, 6", "version digits")
+        expect("<speak>Room 101 202</speak>", "Room 101: 202", "numbers after a word")
+        expect("<speak>Version 2 0 2 6</speak>", "Version 2: 0: 2: 6", "version digits")
         expect("<speak>Call 555.</speak>", "Call 555.", "a lone number is untouched")
         expect("<speak>555-1234</speak>", "555-1234", "a hyphenated number is untouched")
         expect("<speak>The year 1995 was a long time ago.</speak>",
@@ -152,7 +154,7 @@ struct SSMLTextTests {
         // Digits are different: space separated they produce no audio at all, so
         // the comma that separates adjacent numbers is what makes them speakable.
         expect(#"<speak><say-as interpret-as="digits">123</say-as></speak>"#,
-               "1, 2, 3", "digits are separated")
+               "1: 2: 3", "digits are separated")
         // The engine normalizes numbers, dates and currency itself, so these pass
         // through unchanged rather than being mangled by an approximation.
         expect(#"<speak><say-as interpret-as="date">2026-09-22</say-as></speak>"#,

@@ -56,9 +56,21 @@ stripping it:
 
 **Two numbers in a row with only a space between them produce no audio at all**,
 across every build — "555 1234", "10 20 30", "Room 101 202". The engine's own
-test corpus never covers the case. A comma is inserted between them, which the
-engine reads as a short pause; a pause between numbers is natural speech anyway,
-and the alternative is silence.
+test corpus never covers the case (this is fixed in the engine now, see
+`Patches/`, but the text layer keeps the separator so an older engine is still
+intelligible). A **colon** is inserted between them, which the engine reads as a
+short pause; a pause between numbers is natural speech anyway, and the
+alternative is silence.
+
+A colon rather than a comma, and the difference is not cosmetic. Where a comma
+works the colon is **byte-identical** to it — `hello, world` and `hello: world`
+are 13839 samples each on 1995 and 13869 on 1998ENG. But on all **thirteen** 2006
+builds a comma **ends the text**: the comma and every word after it is never
+spoken. `Room 101, 202 and more words here` says "Room 101" and stops. That is
+what the original binaries do, so it is reproduced faithfully, which is exactly
+why the text layer must not use a comma. The colon keeps the tail on all twenty
+builds. A comma the user wrote is left alone; only the separator this layer
+inserts is a colon.
 
 A **clock time** needs different treatment again, because the colon between its
 digits is worse than silent — it makes the engine produce no samples at all, on
