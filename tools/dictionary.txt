@@ -142,6 +142,9 @@ Webinar	web i nar
 Bitcoin	bit coin
 Cryptocurrency	crypto currency
 Blockchain	block chain
+bottleneck	bottle neck
+Bottleneck	bottle neck
+PizzaCat	pih zuh cat
 Smartphone	smart phone
 Smartwatch	smart watch
 Ebook	e book
