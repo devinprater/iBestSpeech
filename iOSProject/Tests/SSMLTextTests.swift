@@ -398,8 +398,10 @@ struct SSMLTextTests {
         // A comma the user wrote ended the text on the thirteen 2006 builds:
         // "Reddit, Yesterday" was byte-identical to "Reddit" alone on 2006ENG.
         // A colon keeps both words and matches the comma sample-for-sample
-        // where the comma already works.
-        expect("<speak>Reddit, Yesterday</speak>", "Red dit: Yesterday",
+        // where the comma already works. "red it", not "Red dit": "dit"
+        // rhymes with "bit" (full vowel, its own stress), while "it" is the
+        // reduced function-word form -- RED-it, as the word is stressed.
+        expect("<speak>Reddit, Yesterday</speak>", "red it: Yesterday",
                "a user comma becomes a colon")
         expect("<speak>Hello, world</speak>", "Hello: world",
                "comma with space becomes a colon")

@@ -79,7 +79,7 @@ enum Pronunciations {
         ("Website", "web site"),
         ("Webpage", "web page"),
         ("approx.", "approximately"),
-        ("Reddit", "Red dit"),
+        ("Reddit", "red it"),
         ("Safari", "Sa fari"),
         ("TikTok", "Tik Tok"),
         ("iPhone", "eye phone"),
