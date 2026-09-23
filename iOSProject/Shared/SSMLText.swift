@@ -648,6 +648,12 @@ public enum SSMLText {
         return nil
     }
 
+    /// The language without its region: "en-US" and "en" are the same language
+    /// for the generated tables, which are keyed by base code.
+    static func baseLanguage(_ language: String) -> String {
+        language.split(separator: "-").first.map(String.init) ?? language
+    }
+
     /// The hex-scalar key a character is stored under: its code points joined by
     /// "-", which is how the generated CLDR and unit tables are keyed.
     static func scalarKey(for character: Character) -> String? {
@@ -663,7 +669,11 @@ public enum SSMLText {
                                  precededBy output: String) -> String? {
         guard let key = scalarKey(for: character),
               let number = numberImmediatelyBefore(output),
-              let forms = UnitPlurals.names[LanguageDetector.base(language)]?[key]
+              // "en-US" and "en" are the same language for this lookup; the
+              // catalogue uses the region form. Stripped inline rather than via
+              // LanguageDetector, so this file compiles on its own -- its test
+              // target does not compile that type.
+              let forms = UnitPlurals.names[baseLanguage(language)]?[key]
         else { return nil }
         let category = pluralCategory(of: number, language: language)
         return forms[category] ?? forms["other"]
@@ -700,7 +710,7 @@ public enum SSMLText {
     static func pluralCategory(of number: (value: Int, fractional: Bool),
                                language: String) -> String {
         let n = abs(number.value)
-        let base = LanguageDetector.base(language)
+        let base = baseLanguage(language)
 
         // A fractional count is never the singular category.
         if number.fractional { return "other" }
