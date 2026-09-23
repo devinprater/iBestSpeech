@@ -32,7 +32,6 @@ MacBook	Mac Book
 Netflix	Net flix
 PlayStation	Play Station
 Reddit	red it
-Safari	Sa fari
 Snapchat	Snap Chat
 Spotify	Spot ify
 TikTok	Tik Tok
