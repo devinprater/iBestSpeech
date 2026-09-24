@@ -411,6 +411,10 @@ struct SSMLTextTests {
         // hard g and an "ee" ending, which the single word "stanggy" gives as
         // one token with one stress -- right for a surname.
         expect("<speak>Stange</speak>", "stanggy", "Stange keeps its g")
+        // A GitHub username: the joined camel case reads as complete gabble
+        // ("Restaurant"), while "Retro" is clean and "Bunn" is byte-identical
+        // to "bun" on every English build.
+        expect("<speak>RetroBunn</speak>", "Retro Bunn", "RetroBunn splits")
         // An interior dot silences the whole utterance on every build, so a
         // letter-dot-letter that is not an abbreviation chain becomes "dot".
         // The dictionary's "ai" entry turns the exposed TLD into A I ("ai"

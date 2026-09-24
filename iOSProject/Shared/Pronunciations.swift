@@ -41,6 +41,8 @@ enum Pronunciations {
         ("Wikipedia", "Wiki pedia"),
         ("Bluetooth", "blue tooth"),
         ("WebSocket", "web socket"),
+        ("RetroBunn", "Retro Bunn"),
+        ("retrobunn", "Retro Bunn"),
         ("Ecommerce", "e commerce"),
         ("ecommerce", "e commerce"),
         ("ApplePay", "Apple Pay"),

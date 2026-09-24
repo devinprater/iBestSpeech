@@ -147,6 +147,8 @@ Devin	Dev un
 devin	Dev un
 Stange	stanggy
 stange	stanggy
+RetroBunn	Retro Bunn
+retrobunn	Retro Bunn
 Bottleneck	bottle neck
 PizzaCat	pizza cat
 Smartphone	smart phone
