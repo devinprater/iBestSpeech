@@ -27,7 +27,7 @@ Discord	Dis cord
 Facebook	Face Book
 HomePod	Home Pod
 Instagram	Insta gram
-LinkedIn	Linked In
+LinkedIn	Linked Inn
 MacBook	Mac Book
 Netflix	Net flix
 PlayStation	Play Station
@@ -143,8 +143,8 @@ Bitcoin	bit coin
 Cryptocurrency	crypto currency
 Blockchain	block chain
 bottleneck	bottle neck
-Devin	Dev in
-devin	Dev in
+Devin	Dev un
+devin	Dev un
 Stange	stanggy
 stange	stanggy
 Bottleneck	bottle neck

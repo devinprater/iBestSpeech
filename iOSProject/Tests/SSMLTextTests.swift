@@ -399,8 +399,14 @@ struct SSMLTextTests {
         // plus "neck" are both clean words the engine already reads well.
         expect("<speak>bottleneck</speak>", "bottle neck", "bottleneck is split")
         // "Devin" voices its e as a long i ("Divin"); "Dev" is the short-e
-        // form, as in "developer" and "Kevin", and "in" is unstressed.
-        expect("<speak>Devin</speak>", "Dev in", "Devin has a short e")
+        // form, as in "developer" and "Kevin". The second syllable is "un"
+        // (schwa), not "in": on the 2006 builds "in." is read as the
+        // abbreviation for inches, so "Devin." came out "dev inches".
+        // "LinkedIn" keeps "Inn" instead -- its second syllable is stressed.
+        expect("<speak>Devin</speak>", "Dev un", "Devin has a short e")
+        expect("<speak>Devin.</speak>", "Dev un.", "Devin before a period")
+        expect("<speak>LinkedIn.</speak>", "Linked Inn.",
+               "LinkedIn before a period")
         // Native "Stange" drops its g ("Saint"); the wanted reading keeps a
         // hard g and an "ee" ending, which the single word "stanggy" gives as
         // one token with one stress -- right for a surname.
