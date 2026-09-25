@@ -232,16 +232,105 @@ def verify_profile(profile_path, want_group):
     return problems
 
 
-def verify_ipa(ipa_path, info, signed=True):
-    """Everything Apple checks that can be checked before uploading.
+def verify_bundle(app, info, signed=True):
+    """Everything Apple checks about the .app, before it is packaged.
 
-    A store IPA is the mirror image of a sideload one: it MUST be signed and
+    A store build is the mirror image of a sideload one: it MUST be signed and
     MUST carry a profile. With `signed=False` (a dry run, which has no
-    certificate), the signature and profile checks are skipped and the rest --
-    icon, version, extension, and that it is table-free -- still run, so the
-    build path is verified even before the Admin key exists.
+    certificate) the signature and profile checks are skipped, and the rest --
+    icon, version, extension, and that it is table-free -- still run. That is
+    what makes a dry run worth doing: it verifies every part of the build except
+    the one that genuinely needs an Admin key.
+
+    `app` is a directory: either from an exported .ipa's Payload, or straight
+    out of an .xcarchive. The checks are identical, so they live here once.
     """
     failures = []
+    with open(app / "Info.plist", "rb") as fh:
+        plist = plistlib.load(fh)
+    # The executable name comes from the plist, so it cannot drift from the
+    # bundle name the way a guess can.
+    executable = plist.get("CFBundleExecutable") or app.stem
+    main_binary = app / executable
+    extension = app / "PlugIns" / "iBestSpeechProvider.appex"
+
+    # --- signed, and the signature is valid -------------------------------
+    if not signed:
+        # A dry run has no distribution certificate, so signing is off in the
+        # build and can only be reported, not checked.
+        print("  (dry run: the signature and profile are not checked)")
+    elif not (app / "_CodeSignature").is_dir():
+        failures.append("no _CodeSignature: this is unsigned, which is a "
+                        "sideload build, not a store build")
+    else:
+        proc = subprocess.run(
+            ["codesign", "--verify", "--deep", "--strict", str(app)],
+            capture_output=True, text=True)
+        if proc.returncode != 0:
+            failures.append("the signature does not verify: "
+                            + (proc.stderr or "").strip()[:300])
+
+    # --- a distribution profile is embedded -------------------------------
+    profile = app / "embedded.mobileprovision"
+    if signed and not profile.is_file():
+        failures.append("no embedded.mobileprovision: the App Store rejects "
+                        "a build without one")
+    elif signed:
+        failures.extend(verify_profile(profile, APP_GROUP))
+
+    # --- the extension is there and also signed ---------------------------
+    if not extension.is_dir():
+        failures.append("the provider extension is not embedded, so the "
+                        "install would have no voices")
+    elif signed and not (extension / "_CodeSignature").is_dir():
+        failures.append("the provider extension is unsigned")
+
+    # --- the icon, without which ITMS-90022 ------------------------------
+    if not (app / "Assets.car").is_file():
+        failures.append("no Assets.car: the icon catalog did not compile")
+    if not plist.get("CFBundleIconName"):
+        failures.append("CFBundleIconName missing (ITMS-90022)")
+    if plist.get("CFBundleIdentifier") != info["bundle_id"]:
+        failures.append(
+            f"bundle ID is {plist.get('CFBundleIdentifier')}, "
+            f"expected {info['bundle_id']}")
+    if plist.get("CFBundleShortVersionString") != info["version"]:
+        failures.append(
+            f"version is {plist.get('CFBundleShortVersionString')}, "
+            f"expected {info['version']}")
+
+    # --- and it must NOT carry the tables ---------------------------------
+    # The tables are megabytes; a store build that still has them is both a
+    # rights problem and a sign the wrong framework was linked.
+    if main_binary.is_file():
+        size = main_binary.stat().st_size
+        # Measured: the bundled binary is ~5.7 MB, the table-free one ~2.0 MB.
+        if size > 4_000_000:
+            failures.append(
+                f"the app binary is {size:,} bytes, which is bundled-build "
+                "size -- the tables are in a build that must not carry them")
+    else:
+        failures.append(f"no main binary at {executable}")
+
+    return failures
+
+
+def verify_archive(archive, info):
+    """The app inside an .xcarchive, for a build that was never exported.
+
+    A dry run cannot use `-exportArchive`: exporting for distribution requires a
+    provisioning profile to re-sign with, so it fails with "No profiles for ...
+    were found" even though the archive is perfect. Verifying the archive's own
+    .app checks everything that matters and needs no certificate.
+    """
+    apps = list((Path(archive) / "Products" / "Applications").glob("*.app"))
+    if not apps:
+        return [f"the archive at {archive} contains no Products/Applications/*.app"]
+    return verify_bundle(apps[0], info, signed=False)
+
+
+def verify_ipa(ipa_path, info, signed=True):
+    """The app inside a packaged .ipa, for a build that was exported."""
     with tempfile.TemporaryDirectory() as tmp:
         run(["unzip", "-q", str(ipa_path), "-d", tmp], "unpack for inspection")
         # Xcode names the bundle after PRODUCT_NAME (iBestSpeech), NOT after the
@@ -252,74 +341,7 @@ def verify_ipa(ipa_path, info, signed=True):
             if not candidates:
                 return ["the .ipa contains no Payload/*.app"]
             app = candidates[0]
-
-        with open(app / "Info.plist", "rb") as fh:
-            plist = plistlib.load(fh)
-        # The executable name comes from the plist, so it cannot drift from the
-        # bundle name the way a guess can.
-        executable = plist.get("CFBundleExecutable") or app.stem
-        main_binary = app / executable
-        extension = app / "PlugIns" / "iBestSpeechProvider.appex"
-
-        # --- signed, and the signature is valid ---------------------------
-        if not signed:
-            # A dry run has no distribution certificate, so signing is turned
-            # off in the build and can only be reported, not checked.
-            print("  (dry run: the signature and profile are not checked)")
-        elif not (app / "_CodeSignature").is_dir():
-            failures.append("no _CodeSignature: this is unsigned, which is a "
-                            "sideload build, not a store build")
-        else:
-            proc = subprocess.run(
-                ["codesign", "--verify", "--deep", "--strict", str(app)],
-                capture_output=True, text=True)
-            if proc.returncode != 0:
-                failures.append("the signature does not verify: "
-                                + (proc.stderr or "").strip()[:300])
-
-        # --- a distribution profile is embedded ---------------------------
-        profile = app / "embedded.mobileprovision"
-        if signed and not profile.is_file():
-            failures.append("no embedded.mobileprovision: the App Store rejects "
-                            "a build without one")
-        elif signed:
-            failures.extend(verify_profile(profile, APP_GROUP))
-
-        # --- the extension is there and also signed ------------------------
-        if not extension.is_dir():
-            failures.append("the provider extension is not embedded, so the "
-                            "install would have no voices")
-        elif signed and not (extension / "_CodeSignature").is_dir():
-            failures.append("the provider extension is unsigned")
-
-        # --- the icon, without which ITMS-90022 ---------------------------
-        if not (app / "Assets.car").is_file():
-            failures.append("no Assets.car: the icon catalog did not compile")
-        if not plist.get("CFBundleIconName"):
-            failures.append("CFBundleIconName missing (ITMS-90022)")
-        if plist.get("CFBundleIdentifier") != info["bundle_id"]:
-            failures.append(
-                f"bundle ID is {plist.get('CFBundleIdentifier')}, "
-                f"expected {info['bundle_id']}")
-        if plist.get("CFBundleShortVersionString") != info["version"]:
-            failures.append(
-                f"version is {plist.get('CFBundleShortVersionString')}, "
-                f"expected {info['version']}")
-
-        # --- and it must NOT carry the tables -----------------------------
-        # The tables are megabytes; a store build that still has them is both a
-        # rights problem and a sign the wrong framework was linked.
-        if main_binary.is_file():
-            size = main_binary.stat().st_size
-            # Measured: the bundled binary is ~5.7 MB, the table-free one ~2.0 MB.
-            if size > 4_000_000:
-                failures.append(
-                    f"the app binary is {size:,} bytes, which is bundled-build "
-                    "size -- the tables are in a build that must not carry them")
-        else:
-            failures.append(f"no main binary at {main_binary.name}")
-
-    return failures
+        return verify_bundle(app, info, signed=signed)
 
 
 def main():
@@ -406,11 +428,16 @@ def main():
         print("  warning: no API key, so signing depends on a logged-in Xcode")
 
     generated_project = PROJECT_DIR / f"{TEMP_PROJECT_NAME}.xcodeproj"
+    # A dry run stops after the archive, so it is kept somewhere durable rather
+    # than in a TemporaryDirectory that vanishes with the with-block.
+    if args.unsigned:
+        archive = Path(out.parent) / f"{TEMP_PROJECT_NAME}.xcarchive"
+    else:
+        archive = Path(tempfile.mkdtemp()) / f"{TEMP_PROJECT_NAME}.xcarchive"
     try:
         with tempfile.TemporaryDirectory() as tmp:
             options_path = write_export_options(Path(tmp) / "ExportOptions.plist",
                                                 export_options(info, args.method))
-            archive = Path(tmp) / f"{TEMP_PROJECT_NAME}.xcarchive"
 
             run(["xcodegen", "generate", "--spec", TEMP_SPEC.name,
                  "--project", "."],
@@ -446,25 +473,32 @@ def main():
                 raise SystemExit(f"xcodebuild reported success but wrote no archive "
                                  f"at {archive}")
 
-            # Export re-signs for distribution and produces the .ipa. With
-            # --unsigned there is no certificate to sign with, so this uses the same
-            # export path but with signing off, which still exercises xcodebuild's
-            # packaging -- that is what makes the dry run meaningful.
             if args.unsigned:
-                run(["xcodebuild", "-exportArchive",
-                     "-archivePath", str(archive),
-                     "-exportOptionsPlist", str(options_path),
-                     "-exportPath", str(out.parent),
-                     ], "export the .ipa (unsigned)", cwd=PROJECT_DIR)
-            else:
-                run(["xcodebuild", "-exportArchive",
-                     "-archivePath", str(archive),
-                     "-exportOptionsPlist", str(options_path),
-                     "-exportPath", str(out.parent),
-                     "-allowProvisioningUpdates",
-                     *auth,
-                     ],
-                    "export the signed .ipa", cwd=PROJECT_DIR)
+                # Stop here. `-exportArchive` must re-sign for distribution, so it
+                # fails with "No profiles for ... were found" without a
+                # certificate -- even against a perfect archive. Everything worth
+                # checking is in the archive already.
+                print("  dry run: stopping after the archive, because exporting "
+                      "needs a profile to re-sign with")
+                failures = verify_archive(archive, info)
+                if failures:
+                    for f in failures:
+                        print(f"FAIL: {f}", file=sys.stderr)
+                    return 1
+                print(f"  archive kept at {archive}")
+                print("  iconed, extensioned, versioned, and table-free "
+                      "(signature not checked: dry run)")
+                return 0
+
+            # Export re-signs for distribution and produces the .ipa.
+            run(["xcodebuild", "-exportArchive",
+                 "-archivePath", str(archive),
+                 "-exportOptionsPlist", str(options_path),
+                 "-exportPath", str(out.parent),
+                 "-allowProvisioningUpdates",
+                 *auth,
+                 ],
+                "export the signed .ipa", cwd=PROJECT_DIR)
 
             # xcodebuild names the exported .ipa after the SCHEME/app, not after the
             # renamed project, so find what it wrote rather than guessing.
@@ -490,21 +524,14 @@ def main():
     if not out.is_file():
         raise SystemExit(f"no .ipa was produced at {out}")
     print(f"  wrote {out} ({out.stat().st_size:,} bytes)")
-    if args.unsigned:
-        print("  NOTE: built without a certificate -- this .ipa cannot be "
-              "uploaded. It exists to prove the build and packaging path.")
 
     print("verifying what Apple will check:")
-    failures = verify_ipa(out, info, signed=not args.unsigned)
+    failures = verify_ipa(out, info, signed=True)
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)
         return 1
-    if args.unsigned:
-        print("  iconed, extensioned, versioned, and table-free "
-              "(signature not checked: dry run)")
-    else:
-        print("  signed, profiled, iconed, and table-free")
+    print("  signed, profiled, iconed, and table-free")
     return 0
 
 

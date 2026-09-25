@@ -204,11 +204,19 @@ def main():
     check("there is an --unsigned mode for a dry run", "--unsigned" in src)
     check("--unsigned and --key-path are refused together",
           "contradictory" in src)
-    check("an unsigned run says the .ipa cannot be uploaded",
-          "cannot be " in src and "uploaded" in src)
     check("an unsigned run does not claim the signature was checked",
           "(signature not checked: dry run)" in src)
-    # The signed path must still check everything.
+    # The dry run must NOT try to export: -exportArchive re-signs for
+    # distribution, so it fails with "No profiles for ... were found" against a
+    # perfect archive when there is no certificate. Verified on a real runner.
+    check("the dry run stops after the archive rather than exporting",
+          "stopping after the archive" in src)
+    check("the archive is verified by a dedicated path",
+          "def verify_archive" in src and "Products\" / \"Applications" in src
+          or 'Products" / "Applications' in src)
+    # The real path must still export and verify a signed .ipa.
+    check("a signed run still exports the .ipa",
+          "-exportArchive" in src)
     check("a signed run still checks the signature",
           "no _CodeSignature" in src)
     check("a signed run still checks the profile",

@@ -183,7 +183,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: iBestSpeech-store-ipa
-          path: iOSProject/build/iBestSpeech-*-store.ipa
+          # A dry run stops at the archive and produces no .ipa, which is
+          # expected -- so do not fail the job for it, and keep the archive
+          # (it holds the verified .app) so the build can be looked at.
+          path: |
+            iOSProject/build/iBestSpeech-*-store.ipa
+            iOSProject/build/iBestSpeechStore.xcarchive
+          if-no-files-found: warn
           retention-days: 14
 
       # ------------------------------------------------------------------ upload
