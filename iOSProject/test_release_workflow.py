@@ -77,6 +77,13 @@ def main():
     # --- the table-free property is verified, not assumed -------------------
     check("the workflow verifies the public archive has no table symbols",
           "the public archive still carries table data" in text)
+    # `nm ... | grep -q` under `set -o pipefail` fails when the symbol IS found:
+    # grep exits at the first match, nm dies of SIGPIPE, and the pipeline is
+    # reported as failed. It did exactly that, intermittently.
+    archive_step = text.split("- name: The two archives must differ")[-1].split("- name: ")[0]
+    check("symbol checks do not pipe a tool into grep -q",
+          "| grep -qE" not in archive_step,
+          "materialise the symbol list to a file first")
 
     # --- the import path is tested on the runner, before anything is built ---
     check("the import-path tests run in CI", "import_tests.py" in text)

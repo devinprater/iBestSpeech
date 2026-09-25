@@ -126,11 +126,20 @@ jobs:
           test "$n_without" -eq 0 \
             || { echo "::error::the public archive still carries table data"; exit 1; }
 
+          # Symbol lists are materialised once, then matched with grep on a FILE.
+          # Do not pipe `nm` into `grep -q`: grep exits at the first match, nm
+          # dies of SIGPIPE, and under `set -o pipefail` the pipeline reports
+          # success as failure. That made this step fail a build whose symbol was
+          # present -- and only sometimes, which is worse.
+          SYMS="$RUNNER_TEMP/bst-symbols.txt"
+          "$NM" "$WITHOUT" 2>/dev/null > "$SYMS"
+
           # The file-import entry point must exist in the public archive, or the
           # app has no way to use the user's own file.
           for sym in bst_open_image bst_open_images bst_builds; do
-            "$NM" "$WITHOUT" 2>/dev/null | grep -qE "T _?$sym" \
+            grep -qE "T _?${sym}\$" "$SYMS" \
               || { echo "::error::the public archive does not define $sym"; exit 1; }
+            echo "public archive defines $sym"
           done
 
           sz_with=$(stat -f%z "$WITH")
