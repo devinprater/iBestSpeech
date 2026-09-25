@@ -179,17 +179,19 @@ def main():
     src = (HERE / "make_store_ipa.py").read_text()
     # Look at the xcodegen CALL, not the whole file: the renamed project path is
     # legitimately built elsewhere (to verify it was generated), so a file-wide
-    # search would fail on correct code.
-    gen_call = re.search(r'run\(\["xcodegen".*?\)\s*,\s*"generate',
-                         src, re.S)
-    check("the xcodegen call was found", gen_call is not None)
-    call = gen_call.group(0) if gen_call else ""
+    # search would fail on correct code. Extract by the call's opening and the
+    # description it passes, which is far less brittle than matching parentheses.
+    start = src.find('run(["xcodegen"')
+    marker = '"generate the Xcode project"'
+    end = src.find(marker, start) if start >= 0 else -1
+    call = src[start:end + len(marker)] if (start >= 0 and end > start) else ""
+    check("the xcodegen call was found", bool(call))
     check("--project is an output directory, not a filename",
           '"--project", "."' in call and "xcodeproj" not in call,
-          f"xcodegen call was: {call[:200]}")
+          f"xcodegen call was: {call[:200]!r}")
     check("--spec points at a separate file, not project.yml",
           '"--spec", TEMP_SPEC.name' in call and '"spec", "project.yml"' not in call,
-          f"xcodegen call was: {call[:200]}")
+          f"xcodegen call was: {call[:200]!r}")
     check("the temporary spec and project are cleaned up afterwards",
           "TEMP_SPEC" in src and "finally:" in src and "rmtree" in src)
     check("a missing generated project is reported, not assumed",
