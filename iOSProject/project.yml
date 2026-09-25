@@ -25,6 +25,9 @@ targets:
     sources:
       - Sources
       - Shared
+      # The icon catalog must be a source of the target, or it is never compiled
+      # and CFBundleIconName is absent -- which fails an upload with ITMS-90022.
+      - Assets
     settings:
       base:
         PRODUCT_NAME: iBestSpeech
@@ -33,6 +36,9 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Info/Info.plist
         TARGETED_DEVICE_FAMILY: "1,2"
+        # Tells the build which set inside the catalog is the app icon. Without
+        # it the catalog compiles but no icon is attached.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # The bridging header includes bst.h, so clang needs the slice matching
         # the SDK being built. Listing both slices unconditionally lets the
         # device headers win for simulator builds and the link then fails.

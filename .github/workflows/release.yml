@@ -263,6 +263,16 @@ jobs:
           echo "bundled version: $VERSION"
           echo "bundled ipa size: $(stat -f%z "$IPA") bytes"
 
+          # An upload without an icon is rejected by App Store Connect with
+          # ITMS-90022, twenty minutes into a delivery. The icon arrives as
+          # Assets.car plus CFBundleIconName, both produced by compiling
+          # Assets.xcassets, so check the product rather than the sources.
+          test -f "$APP/Assets.car" \
+            || { echo "::error::no Assets.car in the bundle -- the icon catalog did not compile"; exit 1; }
+          /usr/libexec/PlistBuddy -c 'Print CFBundleIconName' "$APP/Info.plist" >/dev/null 2>&1 \
+            || { echo "::error::CFBundleIconName is missing -- App Store Connect would reject this with ITMS-90022"; exit 1; }
+          echo "app icon: Assets.car present, CFBundleIconName=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIconName' "$APP/Info.plist")"
+
       - name: Verify the public .ipa carries no table data
         run: |
           set -euo pipefail
