@@ -143,6 +143,32 @@ def main():
           proc.returncode != 0 and "cannot carry the tables" in (proc.stdout + proc.stderr),
           (proc.stdout + proc.stderr)[:200])
 
+    # --- the dry-run mode exists, and its contract is enforced ------------
+    # Without a certificate the build cannot be signed, so the pipeline is only
+    # testable if there is a mode that skips signing. These assertions are about
+    # that mode staying honest: it must not claim to have verified a signature.
+    src = (HERE / "make_store_ipa.py").read_text()
+    check("there is an --unsigned mode for a dry run", "--unsigned" in src)
+    check("--unsigned and --key-path are refused together",
+          "contradictory" in src)
+    check("an unsigned run says the .ipa cannot be uploaded",
+          "cannot be " in src and "uploaded" in src)
+    check("an unsigned run does not claim the signature was checked",
+          "(signature not checked: dry run)" in src)
+    # The signed path must still check everything.
+    check("a signed run still checks the signature",
+          "no _CodeSignature" in src)
+    check("a signed run still checks the profile",
+          "no embedded.mobileprovision" in src)
+
+    proc = subprocess.run(
+        [sys.executable, str(HERE / "make_store_ipa.py"),
+         "--unsigned", "--key-path", "/tmp/nope.p8", "--key-id", "A", "--issuer-id", "B"],
+        capture_output=True, text=True)
+    check("--unsigned with --key-path is refused at runtime",
+          proc.returncode != 0 and "contradictory" in (proc.stdout + proc.stderr),
+          (proc.stdout + proc.stderr)[:200])
+
     # --- the profile check rejects the two profiles Apple rejects ---------
     check("a development profile would be rejected",
           hasattr(m, "verify_profile"))

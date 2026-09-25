@@ -231,11 +231,14 @@ def verify_profile(profile_path, want_group):
     return problems
 
 
-def verify_ipa(ipa_path, info):
+def verify_ipa(ipa_path, info, signed=True):
     """Everything Apple checks that can be checked before uploading.
 
     A store IPA is the mirror image of a sideload one: it MUST be signed and
-    MUST carry a profile.
+    MUST carry a profile. With `signed=False` (a dry run, which has no
+    certificate), the signature and profile checks are skipped and the rest --
+    icon, version, extension, and that it is table-free -- still run, so the
+    build path is verified even before the Admin key exists.
     """
     failures = []
     with tempfile.TemporaryDirectory() as tmp:
@@ -258,7 +261,11 @@ def verify_ipa(ipa_path, info):
         extension = app / "PlugIns" / "iBestSpeechProvider.appex"
 
         # --- signed, and the signature is valid ---------------------------
-        if not (app / "_CodeSignature").is_dir():
+        if not signed:
+            # A dry run has no distribution certificate, so signing is turned
+            # off in the build and can only be reported, not checked.
+            print("  (dry run: the signature and profile are not checked)")
+        elif not (app / "_CodeSignature").is_dir():
             failures.append("no _CodeSignature: this is unsigned, which is a "
                             "sideload build, not a store build")
         else:
@@ -271,17 +278,17 @@ def verify_ipa(ipa_path, info):
 
         # --- a distribution profile is embedded ---------------------------
         profile = app / "embedded.mobileprovision"
-        if not profile.is_file():
+        if signed and not profile.is_file():
             failures.append("no embedded.mobileprovision: the App Store rejects "
                             "a build without one")
-        else:
+        elif signed:
             failures.extend(verify_profile(profile, APP_GROUP))
 
         # --- the extension is there and also signed ------------------------
         if not extension.is_dir():
             failures.append("the provider extension is not embedded, so the "
                             "install would have no voices")
-        elif not (extension / "_CodeSignature").is_dir():
+        elif signed and not (extension / "_CodeSignature").is_dir():
             failures.append("the provider extension is unsigned")
 
         # --- the icon, without which ITMS-90022 ---------------------------
@@ -330,9 +337,18 @@ def main():
                     help=f"export method (default: {DEFAULT_METHOD})")
     ap.add_argument("--keep-tables", action="store_true",
                     help="refused: see the error message")
+    ap.add_argument("--unsigned", action="store_true",
+                    help="build without a certificate, to exercise the pipeline "
+                         "before an Admin API key exists; the result is NOT "
+                         "uploadable, and the signature is not checked")
     ap.add_argument("--configuration", default="Release",
                     choices=["Release", "Debug"])
     args = ap.parse_args()
+
+    if args.unsigned and args.key_path:
+        raise SystemExit("--unsigned and --key-path are contradictory: one asks "
+                         "for no certificate, the other to authenticate so one "
+                         "can be obtained")
 
     if args.keep_tables:
         raise SystemExit(
@@ -382,49 +398,75 @@ def main():
 
         # Archive for a real device, not a simulator: a simulator build cannot
         # be uploaded, and code signing is skipped for it entirely.
-        run(["xcodebuild", "archive",
-             "-project", f"{TEMP_PROJECT_NAME}.xcodeproj",
-             "-scheme", SCHEME,
-             "-configuration", args.configuration,
-             "-destination", "generic/platform=iOS",
-             "-archivePath", str(archive),
-             "-allowProvisioningUpdates",
-             *auth,
-             "MARKETING_VERSION=" + info["version"],
-             "CURRENT_PROJECT_VERSION=" + info["build"],
-             ],
-            "archive", cwd=PROJECT_DIR)
+        archive_cmd = ["xcodebuild", "archive",
+                       "-project", f"{TEMP_PROJECT_NAME}.xcodeproj",
+                       "-scheme", SCHEME,
+                       "-configuration", args.configuration,
+                       "-destination", "generic/platform=iOS",
+                       "-archivePath", str(archive)]
+        if args.unsigned:
+            # No certificate on a dry run, so sign to run locally only -- which
+            # still produces a real archive to export and inspect.
+            archive_cmd += ["CODE_SIGNING_ALLOWED=NO"]
+        else:
+            archive_cmd += ["-allowProvisioningUpdates", *auth]
+        archive_cmd += ["MARKETING_VERSION=" + info["version"],
+                        "CURRENT_PROJECT_VERSION=" + info["build"]]
+        run(archive_cmd, "archive", cwd=PROJECT_DIR)
 
         # Do not take the exit code as proof: require the archive to be there.
         if not Path(archive).is_dir():
             raise SystemExit(f"xcodebuild reported success but wrote no archive "
                              f"at {archive}")
 
-        # Export re-signs for distribution and produces the .ipa.
-        run(["xcodebuild", "-exportArchive",
-             "-archivePath", str(archive),
-             "-exportOptionsPlist", str(options_path),
-             "-exportPath", str(out.parent),
-             "-allowProvisioningUpdates",
-             *auth,
-             ],
-            "export the signed .ipa", cwd=PROJECT_DIR)
+        # Export re-signs for distribution and produces the .ipa. With
+        # --unsigned there is no certificate to sign with, so this uses the same
+        # export path but with signing off, which still exercises xcodebuild's
+        # packaging -- that is what makes the dry run meaningful.
+        if args.unsigned:
+            run(["xcodebuild", "-exportArchive",
+                 "-archivePath", str(archive),
+                 "-exportOptionsPlist", str(options_path),
+                 "-exportPath", str(out.parent),
+                 ], "export the .ipa (unsigned)", cwd=PROJECT_DIR)
+        else:
+            run(["xcodebuild", "-exportArchive",
+                 "-archivePath", str(archive),
+                 "-exportOptionsPlist", str(options_path),
+                 "-exportPath", str(out.parent),
+                 "-allowProvisioningUpdates",
+                 *auth,
+                 ],
+                "export the signed .ipa", cwd=PROJECT_DIR)
 
-        produced = out.parent / f"{TEMP_PROJECT_NAME}.ipa"
-        if produced != out and produced.is_file():
-            shutil.move(str(produced), str(out))
+        # xcodebuild names the exported .ipa after the SCHEME/app, not after the
+        # renamed project, so find what it wrote rather than guessing.
+        if not out.is_file():
+            candidates = [p for p in out.parent.glob("*.ipa") if p != out]
+            # Newest first: a stale ipa from an earlier run must not be mistaken
+            # for the one just exported.
+            candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            if candidates:
+                shutil.move(str(candidates[0]), str(out))
 
     if not out.is_file():
         raise SystemExit(f"no .ipa was produced at {out}")
     print(f"  wrote {out} ({out.stat().st_size:,} bytes)")
+    if args.unsigned:
+        print("  NOTE: built without a certificate -- this .ipa cannot be "
+              "uploaded. It exists to prove the build and packaging path.")
 
     print("verifying what Apple will check:")
-    failures = verify_ipa(out, info)
+    failures = verify_ipa(out, info, signed=not args.unsigned)
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)
         return 1
-    print("  signed, profiled, iconed, and table-free")
+    if args.unsigned:
+        print("  iconed, extensioned, versioned, and table-free "
+              "(signature not checked: dry run)")
+    else:
+        print("  signed, profiled, iconed, and table-free")
     return 0
 
 

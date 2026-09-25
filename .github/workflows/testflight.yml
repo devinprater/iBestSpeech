@@ -125,7 +125,13 @@ jobs:
           fi
 
           cd iOSProject
-          if [ -s "$KEY" ]; then
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            # A dry run has no certificate, so it builds UNSIGNED. That still
+            # exercises xcodegen, the archive, the export and the verification --
+            # everything except the signature -- which is the point of a dry run:
+            # find out now whether the pipeline works, not after the Admin key.
+            python3 make_store_ipa.py --unsigned
+          elif [ -s "$KEY" ]; then
             # -allowProvisioningUpdates with an API key lets the runner create the
             # distribution certificate and App Store profile itself, so no .p12
             # secret is needed.
@@ -134,8 +140,9 @@ jobs:
               --issuer-id "${{ secrets.ASC_ISSUER_ID }}" \
               --key-path "$KEY"
           else
-            echo "no API key, so signing must come from a logged-in Xcode"
-            python3 make_store_ipa.py
+            echo "::error::a real build needs the API key; without it there is"
+            echo "nothing to sign with. Re-run as a dry run to test the pipeline."
+            exit 1
           fi
           rm -f "$KEY"
 
