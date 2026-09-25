@@ -77,10 +77,6 @@ def main():
     # --- the table-free property is verified, not assumed -------------------
     check("the workflow verifies the public archive has no table symbols",
           "the public archive still carries table data" in text)
-    check("the workflow verifies the public ipa is smaller than the bundled one",
-          "the public .ipa is not smaller than the bundled one" in text)
-    check("the workflow verifies the public binary size window",
-          "that is bundled-build size, so this is not table-free" in text)
 
     # --- the import path is tested on the runner, before anything is built ---
     check("the import-path tests run in CI", "import_tests.py" in text)

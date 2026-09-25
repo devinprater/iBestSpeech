@@ -229,7 +229,7 @@ jobs:
             # A Release build sets STRIP_INSTALLED_PRODUCT=YES: both were tried
             # here and both reported nothing for a perfectly good 4.1 MB build.
             # The engine is checked on the ARCHIVE, below, where its symbol
-            # index survives, and by size above, which the tables dominate.
+            # index survives.
             echo "$BASE: arm64 iOS, ${SIZE} bytes"
           done
 
@@ -269,23 +269,35 @@ jobs:
           unzip -q "$IPA" -d "$RUNNER_TEMP/inspect-public"
           APP="$RUNNER_TEMP/inspect-public/Payload/iBestSpeech.app"
 
-          for f in "$APP/iBestSpeech" \
-                   "$APP/PlugIns/iBestSpeechProvider.appex/iBestSpeechProvider"; do
-            BASE=$(basename "$f")
+          # The bundled build is unpacked too, so each public binary can be
+          # compared with its own counterpart. The two are the same code with the
+          # tables added, so the difference IS the table data -- a measurement
+          # rather than a guess at a magic number.
+          rm -rf "$RUNNER_TEMP/inspect-bundled" && mkdir -p "$RUNNER_TEMP/inspect-bundled"
+          unzip -q "$RUNNER_TEMP/iBestSpeech-${VERSION}-sideload.ipa" -d "$RUNNER_TEMP/inspect-bundled"
+          BAPP="$RUNNER_TEMP/inspect-bundled/Payload/iBestSpeech.app"
+
+          for rel in "iBestSpeech" \
+                     "PlugIns/iBestSpeechProvider.appex/iBestSpeechProvider"; do
+            f="$APP/$rel"
+            b="$BAPP/$rel"
+            BASE=$(basename "$rel")
             SIZE=$(stat -f%z "$f")
+            BSIZE=$(stat -f%z "$b")
             otool -hv "$f" | grep -q 'ARM64' \
               || { echo "::error::$BASE is not an arm64 binary"; exit 1; }
             LC=$(otool -l "$f")
             echo "$LC" | grep -A4 LC_BUILD_VERSION | grep -qiE 'platform +2\b|platform IOS\b' \
               || { echo "::error::$BASE was not built for iOS"; exit 1; }
-            # Smaller than the bundled binary by roughly the table data, and far
-            # above an empty shell. Both bounds are checked: too big means the
-            # tables are still in it, too small means the engine is not.
+            # Far above an empty shell: a build with no engine in it would be a
+            # few hundred KB at most.
             test "$SIZE" -gt 700000 \
               || { echo "::error::$BASE is only ${SIZE} bytes -- the engine is not in it"; exit 1; }
-            test "$SIZE" -lt 2000000 \
-              || { echo "::error::$BASE is ${SIZE} bytes -- that is bundled-build size, so this is not table-free"; exit 1; }
-            echo "public $BASE: arm64 iOS, ${SIZE} bytes"
+            # And well under half its bundled twin, since the tables are
+            # megabytes of the bundled size.
+            test "$SIZE" -lt "$((BSIZE / 2))" \
+              || { echo "::error::$BASE is ${SIZE} bytes against a bundled ${BSIZE} -- too close to be table-free"; exit 1; }
+            echo "public $BASE: arm64 iOS, ${SIZE} bytes (bundled ${BSIZE})"
           done
 
           BUNDLED=$(stat -f%z "$RUNNER_TEMP/iBestSpeech-${VERSION}-sideload.ipa")
