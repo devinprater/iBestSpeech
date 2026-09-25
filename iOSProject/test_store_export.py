@@ -114,6 +114,32 @@ def main():
             back = plistlib.load(fh)
         check("the written ExportOptions.plist round-trips", back == opts)
 
+    # --- and the sources it names must exist, or xcodegen fails ------------
+    # "missing source directory" on a fresh clone is build-breaking, and it is
+    # invisible locally because the directory exists on the dev box. The real
+    # failure was `- Assets` for a directory named `Assets.xcassets`.
+    missing = []
+    lines = (HERE / "project.yml").read_text().splitlines()
+    in_sources = False
+    for line in lines:
+        text = line.strip()
+        if text.startswith("sources:"):
+            in_sources = True
+            continue
+        if in_sources:
+            if text.startswith(("settings:", "dependencies:")):
+                in_sources = False
+                continue
+            if text.startswith("- "):
+                entry = text[2:].strip()
+                if entry and not any(c in entry for c in "*$:"):
+                    if not (HERE / entry).exists():
+                        missing.append(entry)
+    check("every source directory the store build generates exists",
+          not missing, f"missing: {', '.join(missing)}")
+    check("the icon catalog is named by its exact path",
+          "- Assets.xcassets" in (HERE / "project.yml").read_text())
+
     # --- prepare_spec refuses a project with no App Group -----------------
     # The extension has no other way to reach the imported file, so a project
     # without one must fail loudly rather than produce a silently broken build.

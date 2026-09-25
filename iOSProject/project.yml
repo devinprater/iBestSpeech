@@ -27,7 +27,9 @@ targets:
       - Shared
       # The icon catalog must be a source of the target, or it is never compiled
       # and CFBundleIconName is absent -- which fails an upload with ITMS-90022.
-      - Assets
+      # EXACT path: `Assets` would name a directory that does not exist, and
+      # xcodegen fails outright with "missing source directory".
+      - Assets.xcassets
     settings:
       base:
         PRODUCT_NAME: iBestSpeech

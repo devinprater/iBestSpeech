@@ -145,6 +145,12 @@ def check(master):
             failures.append(f"{rel} does not match what Xcode expects")
 
     # A catalog nothing points at is a catalog that does nothing.
+    #
+    # Check the exact path, NOT the substring "Assets". The project once listed
+    # `- Assets` while the directory is `Assets.xcassets`; that passes a substring
+    # test, and XcodeGen then fails on a fresh clone with "missing source
+    # directory" -- a build-breaking error found only when a workflow ran, long
+    # after every test was green. A check that cannot fail is not a check.
     spec = os.path.join(REPO, "iOSProject", "project.yml")
     if os.path.isfile(spec):
         with open(spec) as fh:
@@ -154,10 +160,42 @@ def check(master):
                 "project.yml does not set "
                 f"ASSETCATALOG_COMPILER_APPICON_NAME: {ICON_NAME}, so the "
                 "catalog is never used")
-        if "Assets" not in text:
+        wanted = os.path.relpath(CATALOG, os.path.join(REPO, "iOSProject"))
+        if f"- {wanted}" not in text:
             failures.append(
-                "project.yml does not list Assets among the app target's "
-                "sources, so the catalog is not compiled in")
+                f"project.yml does not list `- {wanted}` among the app target's "
+                "sources. A source directory named but absent makes xcodegen "
+                "fail with 'missing source directory', so the upload never "
+                "happens")
+    else:
+        failures.append("no iOSProject/project.yml to check the wiring against")
+
+    # Every source directory the spec names must actually exist, relative to
+    # iOSProject. This is the class of fault above, not the single instance.
+    spec_path = os.path.join(REPO, "iOSProject", "project.yml")
+    if os.path.isfile(spec_path):
+        with open(spec_path) as fh:
+            lines = fh.read().splitlines()
+        in_sources = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("sources:"):
+                in_sources = True
+                continue
+            if in_sources:
+                if stripped.startswith("settings:") or stripped.startswith("dependencies:"):
+                    in_sources = False
+                    continue
+                if stripped.startswith("- "):
+                    entry = stripped[2:].strip()
+                    # Only bare relative paths are directories; skip anything
+                    # with a glob, a variable, or a sub-key.
+                    if entry and not any(c in entry for c in "*$:"):
+                        target = os.path.join(REPO, "iOSProject", entry)
+                        if not os.path.exists(target):
+                            failures.append(
+                                f"project.yml lists `- {entry}` as a source, but "
+                                f"iOSProject/{entry} does not exist")
 
     if failures:
         for f in failures:

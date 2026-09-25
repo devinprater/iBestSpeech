@@ -93,6 +93,37 @@ def main():
     except SystemExit:
         check("repointing a spec with no framework fails loudly", True)
 
+    # --- every source directory the spec names must exist -------------------
+    # XcodeGen fails on a fresh clone with "missing source directory" when a
+    # source is named but absent. That is a build-breaking typo, and it once
+    # shipped as `- Assets` for a directory called `Assets.xcassets`: green in
+    # every local test, red only when a workflow actually ran xcodegen.
+    import os as _os
+    ios_project = HERE
+    spec_lines = source.splitlines()
+    in_sources = False
+    missing_dirs = []
+    for line in spec_lines:
+        stripped = line.strip()
+        if stripped.startswith("sources:"):
+            in_sources = True
+            continue
+        if in_sources:
+            if stripped.startswith(("settings:", "dependencies:")):
+                in_sources = False
+                continue
+            if stripped.startswith("- "):
+                entry = stripped[2:].strip()
+                if entry and not any(c in entry for c in "*$:"):
+                    if not _os.path.exists(ios_project / entry):
+                        missing_dirs.append(entry)
+    check("every source directory project.yml names exists",
+          not missing_dirs,
+          f"missing: {', '.join(missing_dirs)}")
+    # And the icon catalog specifically, by its exact path.
+    check("the icon catalog is named by its exact path",
+          "- Assets.xcassets" in source and "- Assets\n" not in source)
+
     # --- and the default is the table-free kind -----------------------------
     parser_defaults = {}
     # Read the defaults straight out of argparse by asking the script.
