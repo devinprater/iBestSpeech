@@ -104,15 +104,19 @@ jobs:
           # table modules; the public one must carry none of them, and neither
           # may be missing engine code.
           NM=""
+          # Probe each candidate against a REAL archive, not /dev/null: no nm can
+          # read /dev/null, so probing a dummy file rejects every candidate and
+          # the step dies with "no nm on this runner" on a machine that has nm.
+          # The list is ordered llvm-nm first because GNU nm cannot read Mach-O.
+          WITH="Frameworks/OpenBST.xcframework/ios-arm64/libbst_device.a"
+          WITHOUT="Frameworks/OpenBSTNoTables.xcframework/ios-arm64/libbst_device.a"
           for cand in llvm-nm nm /usr/bin/llvm-nm /usr/bin/nm; do
-            if command -v "$cand" >/dev/null 2>&1 && "$cand" /dev/null >/dev/null 2>&1; then
+            if command -v "$cand" >/dev/null 2>&1 && "$cand" "$WITH" >/dev/null 2>&1; then
               NM="$cand"; break
             fi
           done
-          test -n "$NM" || { echo "::error::no nm on this runner"; exit 1; }
-
-          WITH="Frameworks/OpenBST.xcframework/ios-arm64/libbst_device.a"
-          WITHOUT="Frameworks/OpenBSTNoTables.xcframework/ios-arm64/libbst_device.a"
+          test -n "$NM" || { echo "::error::no nm on this runner can read the archive"; exit 1; }
+          echo "using $NM"
 
           n_with=$("$NM" "$WITH" 2>/dev/null | grep -c 'BST_DATA_' || true)
           n_without=$("$NM" "$WITHOUT" 2>/dev/null | grep -c 'BST_DATA_' || true)
