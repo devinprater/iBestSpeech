@@ -1,0 +1,275 @@
+# Build a SIGNED App Store .ipa and send it to TestFlight.
+#
+# Separate from release.yml on purpose. That one publishes an UNSIGNED ipa for
+# people to sideload; this one produces a signed build for testers through
+# TestFlight. Different artifacts, different consequences.
+#
+# Why this is manual-only, and defaults to a dry run:
+#
+#   Every upload burns a build number at Apple permanently -- there is no way to
+#   give one back. A tag push that uploaded automatically would consume one on any
+#   accidental tag, and a second attempt with the same version and build is
+#   rejected. So uploading is a deliberate act here, never a side effect of
+#   pushing. The dry run exercises the whole path -- checkout, patch, engine,
+#   archive, sign, export, verify -- without touching App Store Connect.
+#
+# What it ships: the table-free engine. No voice data goes to testers, and each of
+# them imports their own Keynote Gold file, which is the point of the public
+# build. make_store_ipa.py refuses --keep-tables.
+#
+# Required repository secrets (Settings > Secrets and variables > Actions):
+#   ASC_KEY_ID           App Store Connect API key ID
+#   ASC_ISSUER_ID        the issuer ID shown beside it
+#   ASC_PRIVATE_KEY_P8   base64 of AuthKey_<KEY_ID>.p8   (base64 -w0)
+#
+# The key needs the ADMIN role, not App Manager: Apple allows only the Account
+# Holder or an Admin to create distribution certificates, and an App Manager key
+# fails at exactly that step.
+#
+# Also required on Apple's side, and NOT verifiable from here:
+#   - an app record for com.devin.ibestspeech (the API cannot create one; it 403s)
+#   - App Groups enabled on that App ID, with group.com.devin.ibestspeech assigned
+#     to both the app and the extension. Without it the profile is issued anyway,
+#     the build goes green, and the extension cannot read the tester's file.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and verify only; do not upload to App Store Connect'
+        type: boolean
+        default: true
+      group:
+        description: 'TestFlight beta group to distribute to (blank = upload only)'
+        type: string
+        default: ''
+      beta_review:
+        description: 'Submit for beta app review (required for EXTERNAL groups)'
+        type: boolean
+        default: false
+
+env:
+  # Pinned so the engine is the one the tests measured. Bump deliberately.
+  OPENBST_COMMIT: a151e78f66009bc74367974d14476061f3552346
+  BUNDLE_ID: com.devin.ibestspeech
+
+jobs:
+  testflight:
+    runs-on: macos-15
+    timeout-minutes: 90
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the engine at the pinned commit, and patch it
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/Mudb0y/openbst "$RUNNER_TEMP/openbst"
+          git -C "$RUNNER_TEMP/openbst" checkout --quiet "$OPENBST_COMMIT"
+          cd "$RUNNER_TEMP/openbst"
+          git apply "$GITHUB_WORKSPACE/Patches/openbst-clock-times.patch"
+          git diff --quiet src/tokenise.c src/text.c \
+            && { echo "::error::patch applied but the sources are unchanged"; exit 1; }
+          echo "engine at $(git rev-parse --short HEAD), patched"
+
+      # The engine tests run before anything is built: a store build with a broken
+      # engine is worse than a sideload one, because a tester cannot tell a bug
+      # from their own imported file.
+      - name: Engine regression tests
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/iOSProject/engine_tests.py" \
+            --upstream "$RUNNER_TEMP/openbst"
+
+      - name: Import-path tests
+        run: |
+          set -euo pipefail
+          # The tester supplies the file, so identification is on the critical
+          # path of every voice they will hear.
+          python3 "$GITHUB_WORKSPACE/iOSProject/import_tests.py" \
+            --upstream "$RUNNER_TEMP/openbst"
+
+      - name: Store-export decisions
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/iOSProject/test_store_export.py"
+
+      # Secrets are checked here rather than at the top, so a dry run -- which
+      # needs none of them -- cannot be blocked by a missing one.
+      - name: Check the secrets an upload needs
+        if: ${{ inputs.dry_run == false }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ -n "${{ secrets.ASC_KEY_ID }}" ]         || missing="$missing ASC_KEY_ID"
+          [ -n "${{ secrets.ASC_ISSUER_ID }}" ]      || missing="$missing ASC_ISSUER_ID"
+          [ -n "${{ secrets.ASC_PRIVATE_KEY_P8 }}" ] || missing="$missing ASC_PRIVATE_KEY_P8"
+          if [ -n "$missing" ]; then
+            echo "::error::missing repository secret(s):$missing"
+            echo "Add them under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "the three App Store Connect secrets are present"
+
+      - name: Build the signed store .ipa
+        run: |
+          set -euo pipefail
+          brew install --quiet xcodegen
+          command -v xcodegen >/dev/null || { echo "::error::xcodegen is missing"; exit 1; }
+
+          KEY="$RUNNER_TEMP/AuthKey.p8"
+          if [ -n "${{ secrets.ASC_PRIVATE_KEY_P8 }}" ]; then
+            printf '%s' "${{ secrets.ASC_PRIVATE_KEY_P8 }}" | base64 --decode > "$KEY"
+            chmod 600 "$KEY"
+          fi
+
+          cd iOSProject
+          if [ -s "$KEY" ]; then
+            # -allowProvisioningUpdates with an API key lets the runner create the
+            # distribution certificate and App Store profile itself, so no .p12
+            # secret is needed.
+            python3 make_store_ipa.py \
+              --key-id "${{ secrets.ASC_KEY_ID }}" \
+              --issuer-id "${{ secrets.ASC_ISSUER_ID }}" \
+              --key-path "$KEY"
+          else
+            echo "no API key, so signing must come from a logged-in Xcode"
+            python3 make_store_ipa.py
+          fi
+          rm -f "$KEY"
+
+      - name: Keep the .ipa so a failed upload can be retried without rebuilding
+        uses: actions/upload-artifact@v4
+        with:
+          name: iBestSpeech-store-ipa
+          path: iOSProject/build/iBestSpeech-*-store.ipa
+          retention-days: 14
+
+      # ------------------------------------------------------------------ upload
+      # Everything above produces and verifies the artifact. Only from here does
+      # anything reach Apple, and only when it was asked for.
+      - name: Install asc
+        if: ${{ inputs.dry_run == false }}
+        run: |
+          set -euo pipefail
+          # Pinned version with a checksum, not the install script's "latest":
+          # a release of the CLI should not be able to change under a rerun of
+          # this workflow, and the release job must be reproducible.
+          BASE="https://github.com/rorkai/App-Store-Connect-CLI/releases/download/${ASC_VERSION}"
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$RUNNER_TEMP/asc" "$BASE/asc_${ASC_VERSION}_macOS_arm64"
+          curl -fsSL -o "$RUNNER_TEMP/asc-sums.txt" "$BASE/asc_${ASC_VERSION}_checksums.txt"
+          # Verify before running it: an unverified binary from the network is
+          # exactly what a checksums file exists to prevent.
+          EXPECT=$(grep "asc_${ASC_VERSION}_macOS_arm64$" "$RUNNER_TEMP/asc-sums.txt" | awk '{print $1}')
+          if [ -z "$EXPECT" ]; then
+            echo "::error::no checksum for asc_${ASC_VERSION}_macOS_arm64 in the release"
+            exit 1
+          fi
+          GOT=$(shasum -a 256 "$RUNNER_TEMP/asc" | awk '{print $1}')
+          if [ "$EXPECT" != "$GOT" ]; then
+            echo "::error::asc checksum mismatch: expected $EXPECT, got $GOT"
+            exit 1
+          fi
+          chmod +x "$RUNNER_TEMP/asc"
+          mv "$RUNNER_TEMP/asc" "$HOME/.local/bin/asc"
+          export PATH="$HOME/.local/bin:$PATH"
+          asc version
+
+      - name: Write the API key where asc can read it
+        if: ${{ inputs.dry_run == false }}
+        run: |
+          set -euo pipefail
+          printf '%s' "${{ secrets.ASC_PRIVATE_KEY_P8 }}" | base64 --decode > "$RUNNER_TEMP/asc-key.p8"
+          chmod 600 "$RUNNER_TEMP/asc-key.p8"
+
+      - name: Find the app record
+        if: ${{ inputs.dry_run == false }}
+        id: app
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY_PATH: ${{ runner.temp }}/asc-key.p8
+          ASC_BYPASS_KEYCHAIN: '1'
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          set +e
+          OUT=$(asc apps list --output json 2>&1)
+          CODE=$?
+          set -e
+          if [ $CODE -ne 0 ]; then
+            echo "::error::could not list apps; the API key may lack the Admin role"
+            echo "$OUT"
+            exit 1
+          fi
+          # --app is the numeric App Store Connect app ID, not the bundle ID.
+          APP_ID=$(printf '%s' "$OUT" | python3 "$GITHUB_WORKSPACE/iOSProject/find_app.py" "$BUNDLE_ID")
+          if [ -z "$APP_ID" ]; then
+            echo "::error::$BUNDLE_ID has no app record in App Store Connect."
+            echo "The API cannot create one -- it returns 403. Make the record by"
+            echo "hand at appstoreconnect.apple.com, then re-run this workflow."
+            exit 1
+          fi
+          echo "app ID: $APP_ID"
+          echo "app_id=$APP_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to TestFlight
+        if: ${{ inputs.dry_run == false }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY_PATH: ${{ runner.temp }}/asc-key.p8
+          ASC_BYPASS_KEYCHAIN: '1'
+          APP_ID: ${{ steps.app.outputs.app_id }}
+          GROUP: ${{ inputs.group }}
+          BETA_REVIEW: ${{ inputs.beta_review }}
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+
+          IPA=$(ls iOSProject/build/iBestSpeech-*-store.ipa | head -1)
+          echo "uploading $IPA"
+
+          if [ -z "$GROUP" ]; then
+            # Upload only. Distribution is a separate decision, and the build is
+            # still available to internal testers.
+            asc publish testflight --app "$APP_ID" --ipa "$IPA" \
+              --upload-only --wait --output json
+          elif [ "$BETA_REVIEW" = "true" ]; then
+            # An EXTERNAL group needs beta app review before testers are invited.
+            asc publish testflight --app "$APP_ID" --ipa "$IPA" \
+              --group "$GROUP" --wait --submit --confirm --output json
+          else
+            asc publish testflight --app "$APP_ID" --ipa "$IPA" \
+              --group "$GROUP" --wait --output json
+          fi
+
+      - name: Read the build back from Apple
+        if: ${{ inputs.dry_run == false }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY_PATH: ${{ runner.temp }}/asc-key.p8
+          ASC_BYPASS_KEYCHAIN: '1'
+          APP_ID: ${{ steps.app.outputs.app_id }}
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          # The upload's own report is not evidence the build arrived: asc can
+          # report success for a delivery Apple rejects during processing. Ask
+          # Apple what it holds.
+          asc builds list --app "$APP_ID" --output json \
+            | python3 "$GITHUB_WORKSPACE/iOSProject/latest_build.py"
+
+      - name: Remove the API key
+        if: always() && inputs.dry_run == false
+        run: rm -f "$RUNNER_TEMP/asc-key.p8" "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Say what was not done
+        if: ${{ inputs.dry_run == false && inputs.group == '' }}
+        run: |
+          echo "::notice::The build was uploaded but distributed to no group."
+          echo "Internal testers can see it in TestFlight now. To reach an external"
+          echo "group, re-run with the group set and beta_review true."

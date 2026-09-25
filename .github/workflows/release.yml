@@ -77,6 +77,17 @@ jobs:
           # cause. Checked here, with no Mac needed.
           python3 "$GITHUB_WORKSPACE/iOSProject/test_spec_edits.py"
 
+      - name: Store-export and store-workflow tests
+        run: |
+          set -euo pipefail
+          # The signed App Store build cannot be exercised here -- xcodebuild is
+          # the whole point of it -- but its decisions can. These cover the
+          # ExportOptions that make an upload succeed, the refusal to carry the
+          # tables, and the flags the TestFlight workflow passes to asc (an
+          # invented flag fails ten minutes into a run, after a full build).
+          python3 "$GITHUB_WORKSPACE/iOSProject/test_store_export.py"
+          python3 "$GITHUB_WORKSPACE/iOSProject/test_store_workflow.py"
+
       - name: Release-workflow tests
         run: |
           set -euo pipefail
