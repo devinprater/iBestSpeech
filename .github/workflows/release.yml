@@ -7,9 +7,19 @@ name: release
 # faults this release is about are in the engine, so an .ipa built from an
 # unpatched engine would ship the very faults it exists to fix.
 #
-# workflow_dispatch builds the .ipa and uploads it as an artifact WITHOUT
-# publishing anything, so the package can be inspected before it goes public.
-# A v* tag builds it and creates the release.
+# Two kinds of package come out of here, and the difference is voice data:
+#
+#   public   carries NO table data. The tables belong to Berkeley/HumanWare, so
+#            they are left out and the user supplies their own Keynote Gold file,
+#            which the app imports at run time. This is the kind that is
+#            DISTRIBUTED -- it is what a Release attaches.
+#   bundled  carries the tables, as every release up to v1.0.11 did. Built and
+#            uploaded as a workflow artifact because the author installs it on his
+#            own device, and NOT attached to a release: it is not ours to hand out.
+#
+# A `v*` tag builds both, publishes the PUBLIC one, and attaches it to the
+# Release. workflow_dispatch builds both and uploads them as artifacts WITHOUT
+# publishing anything, so a package can be inspected before it goes anywhere.
 on:
   push:
     tags: ['v*']
@@ -48,14 +58,87 @@ jobs:
           python3 "$GITHUB_WORKSPACE/iOSProject/engine_tests.py" \
             --upstream "$RUNNER_TEMP/openbst"
 
-      - name: Build the XCFramework
+      - name: Import-path tests
+        run: |
+          set -euo pipefail
+          # The identification layer runs on the host, against a table-free
+          # engine, so a mistake in it is caught here rather than by a user whose
+          # file the app refuses.
+          python3 "$GITHUB_WORKSPACE/iOSProject/import_tests.py" \
+            --upstream "$RUNNER_TEMP/openbst"
+
+      - name: Packaging-spec tests
+        run: |
+          set -euo pipefail
+          # make_sideload_ipa.py edits project.yml as TEXT (rename the project,
+          # drop the App Group, repoint the XCFramework). A text edit that leaves
+          # one reference behind produces a project that links one archive while
+          # compiling against another's headers -- a failure a long way from its
+          # cause. Checked here, with no Mac needed.
+          python3 "$GITHUB_WORKSPACE/iOSProject/test_spec_edits.py"
+
+      - name: Release-workflow tests
+        run: |
+          set -euo pipefail
+          # The workflow is not compiled, so its mistakes surface as a red run
+          # twenty minutes in. Check the checkable parts: every artifact it
+          # uploads was built, every path a later step reads was written, and the
+          # file it PUBLISHES is the table-free one.
+          python3 "$GITHUB_WORKSPACE/iOSProject/test_release_workflow.py"
+
+      - name: Build both XCFrameworks
         working-directory: iOSProject
         run: |
           set -euo pipefail
           python3 build_frameworks.py --upstream "$RUNNER_TEMP/openbst"
           test -d Frameworks/OpenBST.xcframework
+          python3 build_frameworks.py --upstream "$RUNNER_TEMP/openbst" --no-tables
+          test -d Frameworks/OpenBSTNoTables.xcframework
 
-      - name: Build the sideloadable .ipa
+      - name: The two archives must differ by the tables and nothing else
+        working-directory: iOSProject
+        run: |
+          set -euo pipefail
+          # This is the property that makes a public build distributable, so it
+          # is checked rather than assumed. The bundled archive must carry the
+          # table modules; the public one must carry none of them, and neither
+          # may be missing engine code.
+          NM=""
+          for cand in llvm-nm nm /usr/bin/llvm-nm /usr/bin/nm; do
+            if command -v "$cand" >/dev/null 2>&1 && "$cand" /dev/null >/dev/null 2>&1; then
+              NM="$cand"; break
+            fi
+          done
+          test -n "$NM" || { echo "::error::no nm on this runner"; exit 1; }
+
+          WITH="Frameworks/OpenBST.xcframework/ios-arm64/libbst_device.a"
+          WITHOUT="Frameworks/OpenBSTNoTables.xcframework/ios-arm64/libbst_device.a"
+
+          n_with=$("$NM" "$WITH" 2>/dev/null | grep -c 'BST_DATA_' || true)
+          n_without=$("$NM" "$WITHOUT" 2>/dev/null | grep -c 'BST_DATA_' || true)
+          echo "table symbols -- bundled: $n_with, public: $n_without"
+          test "$n_with" -ge 20 \
+            || { echo "::error::the bundled archive is missing its table modules"; exit 1; }
+          test "$n_without" -eq 0 \
+            || { echo "::error::the public archive still carries table data"; exit 1; }
+
+          # The file-import entry point must exist in the public archive, or the
+          # app has no way to use the user's own file.
+          for sym in bst_open_image bst_open_images bst_builds; do
+            "$NM" "$WITHOUT" 2>/dev/null | grep -qE "T _?$sym" \
+              || { echo "::error::the public archive does not define $sym"; exit 1; }
+          done
+
+          sz_with=$(stat -f%z "$WITH")
+          sz_without=$(stat -f%z "$WITHOUT")
+          echo "archive sizes -- bundled: ${sz_with}, public: ${sz_without}"
+          # The tables are megabytes. If the public archive is not a great deal
+          # smaller, something is still in it.
+          test "$sz_without" -lt "$((sz_with / 2))" \
+            || { echo "::error::the public archive is not smaller than the bundled one"; exit 1; }
+          echo "the public archive carries engine code and none of the tables"
+
+      - name: Prepare the packaging tool and read the version
         working-directory: iOSProject
         run: |
           set -euo pipefail
@@ -63,10 +146,25 @@ jobs:
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info/Info.plist)"
           test -n "$VERSION"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Build the public .ipa (no table data)
+        working-directory: iOSProject
+        run: |
+          set -euo pipefail
+          # No flag for the default kind: table-free is what happens when nobody
+          # asks for tables, so a forgotten flag cannot ship voice data.
           python3 make_sideload_ipa.py \
+            --out "$RUNNER_TEMP/iBestSpeech-${VERSION}-public.ipa"
+
+      - name: Build the bundled .ipa (author's own device only)
+        working-directory: iOSProject
+        run: |
+          set -euo pipefail
+          python3 make_sideload_ipa.py \
+            --keep-tables \
             --out "$RUNNER_TEMP/iBestSpeech-${VERSION}-sideload.ipa"
 
-      - name: Verify the .ipa before it goes anywhere
+      - name: Verify the bundled .ipa before it goes anywhere
         run: |
           set -euo pipefail
           IPA="$RUNNER_TEMP/iBestSpeech-${VERSION}-sideload.ipa"
@@ -121,7 +219,7 @@ jobs:
             # the measured binaries are 4.1 MB. 2 MB sits well clear of a build
             # with no engine in it and well under a real one.
             test "$SIZE" -gt 2000000 \
-              || { echo "::error::$BASE is only ${SIZE} bytes -- the engine's tables are not in it"; exit 1; }
+              || { echo "::error::$BASE is only ${SIZE} bytes -- this bundle is missing its tables"; exit 1; }
 
             # Do NOT look for engine symbols or table names in the BINARY.
             # A Release build sets STRIP_INSTALLED_PRODUCT=YES: both were tried
@@ -131,47 +229,6 @@ jobs:
             echo "$BASE: arm64 iOS, ${SIZE} bytes"
           done
 
-          # Engine CODE, on the archive that is linked into both binaries: its
-          # symbol index survives even though the shipped binaries are stripped,
-          # so this is the one honest way to confirm the engine's code was really
-          # in the build rather than merely hoped for. The size check above
-          # covers the tables, which dominate the binary.
-          LIB="$GITHUB_WORKSPACE/iOSProject/Frameworks/OpenBST.xcframework/ios-arm64/libbst_device.a"
-          test -f "$LIB" || { echo "::error::the device archive is missing"; exit 1; }
-
-          # Find an nm that can actually read this file, and prove it can before
-          # trusting it. `llvm-nm` does not exist on the macOS runner, and with
-          # set -e + pipefail an absent command makes the assignment exit the
-          # step immediately -- with its stderr suppressed, so the step failed
-          # with no message at all. Probe instead of assuming.
-          NM=""
-          for cand in llvm-nm nm /usr/bin/llvm-nm /usr/bin/nm; do
-            if command -v "$cand" >/dev/null 2>&1 && "$cand" "$LIB" >/dev/null 2>&1; then
-              NM="$cand"
-              break
-            fi
-          done
-          test -n "$NM" || { echo "::error::no nm on this runner can read the archive"; exit 1; }
-          echo "reading the archive with: $NM"
-
-          DEFINED=$("$NM" "$LIB" | grep -cE '\bT _?bst_' || true)
-          echo "engine functions defined in the linked archive: $DEFINED"
-          test "$DEFINED" -ge 8 \
-            || { echo "::error::the linked archive defines only $DEFINED engine functions"; exit 1; }
-
-          # The entry points the Swift layer actually calls must be among them.
-          # If any were missing the link would have failed, so this is a cheap
-          # confirmation that the archive is the one the app needs.
-          for sym in bst_open bst_say bst_close bst_get bst_set bst_length; do
-            "$NM" "$LIB" | grep -qE "\bT _?$sym\b" \
-              || { echo "::error::the archive does not define $sym"; exit 1; }
-          done
-          echo "the archive defines the entry points the app calls"
-
-          # Every non-system dependency must resolve, or the app installs and
-          # then dies at launch. Collect into a file, then fail on a non-empty
-          # one: an `exit 1` inside a pipeline runs in a subshell and would NOT
-          # fail this step.
           UNRESOLVED="$RUNNER_TEMP/unresolved.txt"
           : > "$UNRESOLVED"
           for f in "$BIN" "$EXT"; do
@@ -190,15 +247,62 @@ jobs:
             exit 1
           fi
 
-          echo "version: $VERSION"
-          echo "ipa size: $(stat -f%z "$IPA") bytes"
-          echo "no profile, no signature, extension embedded, engine code and tables present"
+          echo "bundled version: $VERSION"
+          echo "bundled ipa size: $(stat -f%z "$IPA") bytes"
 
-      - name: Upload the .ipa
+      - name: Verify the public .ipa carries no table data
+        run: |
+          set -euo pipefail
+          IPA="$RUNNER_TEMP/iBestSpeech-${VERSION}-public.ipa"
+          test -s "$IPA" || { echo "::error::no public .ipa was produced"; exit 1; }
+
+          unzip -l "$IPA" | grep -q 'embedded.mobileprovision' \
+            && { echo "::error::the public .ipa is signed; it cannot be re-signed"; exit 1; }
+          unzip -l "$IPA" | grep -q 'PlugIns/iBestSpeechProvider.appex/iBestSpeechProvider' \
+            || { echo "::error::the provider extension is not embedded"; exit 1; }
+
+          rm -rf "$RUNNER_TEMP/inspect-public" && mkdir -p "$RUNNER_TEMP/inspect-public"
+          unzip -q "$IPA" -d "$RUNNER_TEMP/inspect-public"
+          APP="$RUNNER_TEMP/inspect-public/Payload/iBestSpeech.app"
+
+          for f in "$APP/iBestSpeech" \
+                   "$APP/PlugIns/iBestSpeechProvider.appex/iBestSpeechProvider"; do
+            BASE=$(basename "$f")
+            SIZE=$(stat -f%z "$f")
+            otool -hv "$f" | grep -q 'ARM64' \
+              || { echo "::error::$BASE is not an arm64 binary"; exit 1; }
+            LC=$(otool -l "$f")
+            echo "$LC" | grep -A4 LC_BUILD_VERSION | grep -qiE 'platform +2\b|platform IOS\b' \
+              || { echo "::error::$BASE was not built for iOS"; exit 1; }
+            # Smaller than the bundled binary by roughly the table data, and far
+            # above an empty shell. Both bounds are checked: too big means the
+            # tables are still in it, too small means the engine is not.
+            test "$SIZE" -gt 700000 \
+              || { echo "::error::$BASE is only ${SIZE} bytes -- the engine is not in it"; exit 1; }
+            test "$SIZE" -lt 2000000 \
+              || { echo "::error::$BASE is ${SIZE} bytes -- that is bundled-build size, so this is not table-free"; exit 1; }
+            echo "public $BASE: arm64 iOS, ${SIZE} bytes"
+          done
+
+          BUNDLED=$(stat -f%z "$RUNNER_TEMP/iBestSpeech-${VERSION}-sideload.ipa")
+          PUBLIC=$(stat -f%z "$IPA")
+          echo "bundled ipa: $BUNDLED bytes, public ipa: $PUBLIC bytes"
+          test "$PUBLIC" -lt "$BUNDLED" \
+            || { echo "::error::the public .ipa is not smaller than the bundled one"; exit 1; }
+          echo "public version: $VERSION, no table data"
+
+      - name: Upload the bundled .ipa
         uses: actions/upload-artifact@v4
         with:
           name: iBestSpeech-${{ env.VERSION }}-sideload
           path: ${{ runner.temp }}/iBestSpeech-${{ env.VERSION }}-sideload.ipa
+          retention-days: 30
+
+      - name: Upload the public .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: iBestSpeech-${{ env.VERSION }}-public
+          path: ${{ runner.temp }}/iBestSpeech-${{ env.VERSION }}-public.ipa
           retention-days: 30
 
       - name: Publish the release
@@ -207,6 +311,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          IPA="$RUNNER_TEMP/iBestSpeech-${VERSION}-sideload.ipa"
+          # The PUBLIC .ipa is what gets attached. It carries no voice data, so it
+          # is the only one we are in a position to hand out; the bundled build
+          # stays a workflow artifact for the author's own device.
+          IPA="$RUNNER_TEMP/iBestSpeech-${VERSION}-public.ipa"
           NOTES="$GITHUB_WORKSPACE/ReleaseNotes/${GITHUB_REF_NAME}.md"
           bash "$GITHUB_WORKSPACE/tools/publish_release.sh" "$GITHUB_REF_NAME" "$IPA" "$NOTES"

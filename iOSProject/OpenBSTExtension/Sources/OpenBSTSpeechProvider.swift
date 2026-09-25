@@ -16,22 +16,14 @@ private let kOutputSampleRate: Double = 22050.0
 /// VoiceOver loads this as a speech synthesis provider extension. The audio unit
 /// pulls samples on a real-time thread while `synthesizeSpeechRequest` runs on
 /// another, so the render path must never allocate, take a lock, or block.
+///
+/// The voice data is not in this bundle. The app is what imports it, and the
+/// extension reads the same files out of the App Group container the two share
+/// — so the voices offered are exactly the files the user has loaded, and an
+/// install with no files loaded offers no voices at all.
 public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
 
     private static let voiceIdentifierPrefix = "com.devin.ibestspeech."
-
-    /// Build ID to BCP-47 language tag. Every build the library carries must
-    /// appear here or VoiceOver files the voice under the wrong language.
-    private static let languageMap: [String: String] = [
-        "1995": "en-US",
-        "1998ENG": "en-US", "1998DUT": "nl-NL", "1998FRN": "fr-FR",
-        "1998GRM": "de-DE", "1998ITL": "it-IT", "1998SPN": "es-ES",
-        "2006ARA": "ar-SA", "2006DUT": "nl-NL", "2006ENG": "en-US",
-        "2006FRE": "fr-FR", "2006GER": "de-DE", "2006GRE": "el-GR",
-        "2006HEB": "he-IL", "2006ITA": "it-IT", "2006JPN": "ja-JP",
-        "2006POL": "pl-PL", "2006POR": "pt-PT", "2006RUS": "ru-RU",
-        "2006SPA": "es-ES",
-    ]
 
     // MARK: - Audio unit plumbing
 
@@ -75,27 +67,55 @@ public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
     private var state: SpeechState?
     private let stateLock = NSLock()   // guards swaps only; never taken in render
 
-    /// The handle is kept between requests. Opening one costs about 0.05 ms, so
-    /// recreating it per request would not be fatal, but keeping it also avoids
-    /// re-reading the build's tables for every sentence VoiceOver speaks.
+    /// The handle is kept between requests, along with the bytes it reads from.
+    ///
+    /// ⛔ The engine stores a pointer into the image rather than copying it, so
+    /// the `Data` must outlive the handle. Keeping both here, and replacing them
+    /// together, is what makes that true; releasing the data while the handle
+    /// lived would leave the engine reading freed memory on a later utterance.
     private var engine: OpenBST?
     private var engineBuild: String?
+    private var engineImage: Data?
 
     // MARK: - Voice registration
 
+    /// The voices this provider offers: the user's imported files, plus whatever
+    /// the library carries compiled in.
+    ///
+    /// Read from disk on each call rather than cached, because the system asks for
+    /// this list at times this process cannot predict — and a stale list would
+    /// offer a voice whose file has since been removed, which fails silently when
+    /// VoiceOver tries to use it.
     public override var speechVoices: [AVSpeechSynthesisProviderVoice] {
         get {
-            OpenBST.availableBuilds().map { build in
-                let lang = Self.languageMap[build] ?? "en-US"
+            var seen = Set<String>()
+            var builds: [String] = []
+            for build in ImportStore.storedBuilds() + Self.compiledInBuilds()
+            where seen.insert(build).inserted {
+                builds.append(build)
+            }
+
+            return builds.compactMap { build in
+                guard let info = VoiceCatalog.info(for: build) else { return nil }
                 return AVSpeechSynthesisProviderVoice(
-                    name: "Keynote Gold (\(build))",
+                    name: VoiceCatalog.displayName(for: build),
                     identifier: Self.voiceIdentifierPrefix + build,
-                    primaryLanguages: [lang],
-                    supportedLanguages: [lang]
+                    primaryLanguages: [info.language],
+                    supportedLanguages: [info.language]
                 )
             }
         }
         set { /* The host may try to set this; the list is derived, not stored. */ }
+    }
+
+    /// The builds whose tables are compiled into this copy of the engine.
+    ///
+    /// Empty for a public build, which carries none. `bst_builds` lists all
+    /// twenty names whether or not any tables are present — the names are a
+    /// static list — so each name is opened to find out whether it really has
+    /// tables behind it.
+    static func compiledInBuilds() -> [String] {
+        OpenBST.availableBuilds().filter { OpenBST(build: $0) != nil }
     }
 
     // MARK: - Requests
@@ -112,7 +132,9 @@ public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
             return nil
         }
         let build = String(identifier[range.upperBound...])
-        guard !build.isEmpty, OpenBST.availableBuilds().contains(build) else { return nil }
+        guard !build.isEmpty,
+              ImportStore.storedBuilds().contains(build) || compiledInBuilds().contains(build)
+        else { return nil }
         return build
     }
 
@@ -153,16 +175,22 @@ public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
             case .speech(let text, let pitch, let rate, _):
                 guard !text.isEmpty else { continue }
 
-                // A switch only when the detector is sure. It declines on short
-                // text and on anything ambiguous, which keeps the requested
-                // voice for the ordinary case.
-                let wantBuild = LanguageDetector.buildToSpeak(text,
+                // A switch only when the detector is sure, and only to a build
+                // whose tables are actually available — either the user's file
+                // or the library's own. A detected language with nothing behind
+                // it must not steal the words.
+                var wantBuild = LanguageDetector.buildToSpeak(text,
                                                               insteadOf: defaultLanguage)
                     ?? buildName
+                if ImportStore.data(for: wantBuild) == nil, !Self.compiledInBuilds().contains(wantBuild) {
+                    wantBuild = buildName
+                }
 
                 if wantBuild != currentBuild {
-                    // A build whose framework is not in the bundle has no voice;
-                    // fall back to the requested one rather than drop the words.
+                    // The build is opened from the user's own file when there is
+                    // one, otherwise from the library's own tables; if neither
+                    // works, fall back to the requested voice rather than drop
+                    // the words.
                     let handle = engineHandle(for: wantBuild)
                         ?? (wantBuild == buildName ? nil : engineHandle(for: buildName))
                     currentBuild = handle == nil ? nil : wantBuild
@@ -227,10 +255,27 @@ public final class OpenBSTSpeechProvider: AVSpeechSynthesisProviderAudioUnit {
         stateLock.unlock()
     }
 
-    /// The engine for `build`, reusing the open handle when it is the same build.
+    /// The engine for `build`, preferring the user's own file.
+    ///
+    /// The image is kept as well as the handle: the engine points into it rather
+    /// than copying it, so dropping the `Data` would leave the engine reading
+    /// memory that no longer belongs to us.
     private func engineHandle(for build: String) -> OpenBST? {
         if let engine, engineBuild == build { return engine }
-        guard let opened = OpenBST(build: build) else { return nil }
+
+        let opened: OpenBST?
+        if let image = ImportStore.data(for: build) {
+            let core = ImportStore.data(for: build, core: true)
+            opened = OpenBST(build: build, image: image, core: core)
+            // Held so the engine can keep pointing into it.
+            engineImage = image
+        } else {
+            opened = OpenBST(build: build)
+            // Nothing to hold: the tables are in the binary.
+            engineImage = nil
+        }
+        guard let opened else { return nil }
+
         engine = opened
         engineBuild = build
         return opened

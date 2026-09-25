@@ -19,13 +19,23 @@ rejected at signing time by the tools that use free accounts. This script strips
 the App Group from the XcodeGen spec before generating, so the resulting binary
 asks for nothing a free account cannot provide.
 
-Whether the App Group is *load-bearing* is a separate question. Nothing in the
-Swift reads it -- the voice list is computed from the engine's own static build
-table, not from shared defaults -- so it looks like it is not. But it was added
-while chasing registration and the app has not been run on a device without it,
-so that is an assumption, not a measurement. If voices stop appearing, build
-with --keep-app-group on a paid account instead, or restore the block in
-project.yml.
+⛔ **Stripping the App Group costs the file import half its function.** The
+entitlement is what lets the provider extension read the engine files the user
+imports: without it the app still imports and previews them from its own
+container, but the extension cannot see that container, so the voice never
+appears in VoiceOver's list. The app states this in its own interface when it
+detects the situation (ImportStore.isShared), so it is a known limitation rather
+than a mystery. For a build meant to last, install with --keep-app-group on a
+paid account — which TestFlight requires anyway.
+
+Two kinds of payload:
+
+    (default)     carries the engine's tables. For your own device.
+    --no-tables   carries NO table data. This is the distributable kind: the
+                  tables belong to Berkeley/HumanWare, so they are left out and
+                  the user supplies their own Keynote Gold file. Needs
+                  Frameworks/OpenBSTNoTables.xcframework, built with
+                  `build_frameworks.py --no-tables`.
 
 The repository's own project.yml is left alone: this writes a temporary spec
 beside it, generates into a project of its own name, and cleans up after itself.
@@ -33,9 +43,10 @@ beside it, generates into a project of its own name, and cleans up after itself.
 Usage:
     python3 make_sideload_ipa.py                       # -> build/iBestSpeech-sideload.ipa
     python3 make_sideload_ipa.py --out /tmp/foo.ipa
+    python3 make_sideload_ipa.py --no-tables           # distributable, no voice data
     python3 make_sideload_ipa.py --keep-app-group      # paid account
 
-Requires: xcodegen, Xcode, and Frameworks/OpenBST.xcframework already built by
+Requires: xcodegen, Xcode, and the XCFramework already built by
 build_frameworks.py.
 """
 
@@ -90,6 +101,20 @@ def rename_spec(spec: str, name: str) -> str:
     raise SystemExit("project.yml has no `name:` line to rename")
 
 
+def point_at_framework(spec: str, framework: str) -> str:
+    """Repoint the project at a different XCFramework.
+
+    The spec names the framework in two places per target -- the header search
+    paths and the dependency -- and both have to move together or the build links
+    one archive while including the other's headers.
+    """
+    old = "Frameworks/OpenBST.xcframework"
+    new = f"Frameworks/{framework}"
+    if old not in spec:
+        raise SystemExit(f"the spec does not mention {old}")
+    return spec.replace(old, new)
+
+
 def run(command: list[str], description: str, **kwargs) -> subprocess.CompletedProcess:
     print(f"\n==> {description}")
     print("    " + " ".join(command))
@@ -104,21 +129,40 @@ def run(command: list[str], description: str, **kwargs) -> subprocess.CompletedP
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--out", default=str(PROJECT_DIR / "build" / "iBestSpeech-sideload.ipa"),
-                        help="where to write the .ipa")
+    parser.add_argument("--out", default=None,
+                        help="where to write the .ipa (default: build/iBestSpeech-<kind>.ipa)")
     parser.add_argument("--keep-app-group", action="store_true",
                         help="keep the App Group entitlement (needs a paid account)")
+    parser.add_argument("--keep-tables", action="store_true",
+                        help="include the engine's voice data. NOT distributable: those "
+                             "tables belong to Berkeley/HumanWare. For your own device only.")
     parser.add_argument("--configuration", default="Release", choices=["Release", "Debug"])
     args = parser.parse_args()
 
-    framework = PROJECT_DIR / "Frameworks" / "OpenBST.xcframework"
+    # Table-free is the DEFAULT, because it is the only distributable kind: the
+    # voice data belongs to someone else, so a shipped app must not carry it and
+    # the user imports their own Keynote Gold file instead. Making the bundled
+    # build an explicit opt-in means it cannot be produced by forgetting a flag.
+    framework_name = ("OpenBST.xcframework" if args.keep_tables
+                      else "OpenBSTNoTables.xcframework")
+    framework = PROJECT_DIR / "Frameworks" / framework_name
     if not framework.exists():
-        raise SystemExit(
-            f"{framework} is missing. Run build_frameworks.py --upstream <openbst> first."
-        )
+        hint = ("python3 build_frameworks.py --upstream <openbst>" if args.keep_tables
+                else "python3 build_frameworks.py --upstream <openbst> --no-tables")
+        raise SystemExit(f"{framework} is missing. Run: {hint}")
+
+    if args.out is None:
+        kind = "sideload" if args.keep_tables else "public"
+        args.out = str(PROJECT_DIR / "build" / f"iBestSpeech-{kind}.ipa")
 
     spec = SOURCE_SPEC.read_text()
     spec = rename_spec(spec, TEMP_PROJECT_NAME)
+    # Both the header search paths and the dependency have to move together, or
+    # the build links one archive while including the other's headers.
+    spec = point_at_framework(spec, framework_name)
+    print(f"Linking {framework_name}"
+          + (" (WITH voice data -- not distributable)" if args.keep_tables
+             else " (no voice data -- the user supplies their own Keynote Gold file)"))
     if not args.keep_app_group:
         spec = strip_app_group(spec)
         print("App Group stripped: the .ipa will ask for nothing a free Apple ID "

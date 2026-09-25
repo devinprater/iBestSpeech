@@ -6,8 +6,28 @@ import Foundation
 /// cheap — measured at 0.05 ms including closing — but it is not free, so a
 /// caller synthesizing several parts of one utterance should keep it open rather
 /// than reopening per part.
+///
+/// A handle can be opened two ways: from the tables compiled into the library
+/// (`init?(build:)`), or from a file the caller supplies (`init?(build:image:)`).
+/// The second is what lets a shipped build carry no third-party table data at
+/// all — see `Identify` below.
 public class OpenBST {
     private var handle: OpaquePointer?
+
+    /// Memory the engine reads the tables out of, when they came from a file.
+    ///
+    /// ⛔ The engine does **not** copy the image; `bst_image_init_map` stores the
+    /// pointer it was handed (`img->image = d`) and every table read afterwards
+    /// goes through it. A Swift `Data` passed to `withUnsafeBytes` is only
+    /// guaranteed for the duration of that call, so handing the engine a `Data`
+    /// directly would leave it reading memory that may have moved or been freed —
+    /// which faults at an unpredictable later moment, not at the call. The bytes
+    /// are therefore copied into an allocation this object owns and frees only
+    /// after `bst_close`.
+    private var owned: UnsafeMutableRawPointer?
+
+    /// The paired core file, for the six 1998 modules. Same ownership rule.
+    private var ownedCore: UnsafeMutableRawPointer?
 
     public enum Parameter: String {
         case pitch, top, level, voice, rate
@@ -18,8 +38,58 @@ public class OpenBST {
         if self.handle == nil { return nil }
     }
 
+    /// Opens `build` against tables read out of the caller's own file.
+    ///
+    /// `core` is the shared core module the six 1998 builds keep their excitation
+    /// and gain tables in; those builds are rejected by the engine without it.
+    /// Every other build ignores it.
+    public init?(build: String, image: Data, core: Data? = nil) {
+        guard !image.isEmpty else { return nil }
+
+        let imagePtr = Self.copy(image)
+        guard let imagePtr else { return nil }
+
+        var corePtr: UnsafeMutableRawPointer?
+        if let core, !core.isEmpty {
+            corePtr = Self.copy(core)
+            if corePtr == nil { imagePtr.deallocate(); return nil }
+        }
+
+        let opened: OpaquePointer? = imagePtr.withMemoryRebound(to: UInt8.self, capacity: image.count) { raw -> OpaquePointer? in
+            if let corePtr {
+                return corePtr.withMemoryRebound(to: UInt8.self, capacity: core?.count ?? 0) { rawCore in
+                    bst_open_images(build, raw, image.count, rawCore, core?.count ?? 0)
+                }
+            }
+            return bst_open_images(build, raw, image.count, nil, 0)
+        }
+        guard let opened else {
+            imagePtr.deallocate()
+            corePtr?.deallocate()
+            return nil
+        }
+
+        self.owned = imagePtr
+        self.ownedCore = corePtr
+        self.handle = opened
+    }
+
     deinit {
         if let h = handle { bst_close(h) }
+        // Freed after the close, never before: the handle is still reading them.
+        owned?.deallocate()
+        ownedCore?.deallocate()
+    }
+
+    /// Copies bytes into an allocation that will not move.
+    private static func copy(_ data: Data) -> UnsafeMutableRawPointer? {
+        guard let ptr = UnsafeMutableRawPointer.allocate(byteCount: data.count,
+                                                         alignment: 16) as UnsafeMutableRawPointer?
+        else { return nil }
+        data.withUnsafeBytes { src in
+            if let base = src.baseAddress { ptr.copyMemory(from: base, byteCount: data.count) }
+        }
+        return ptr
     }
 
     public var sampleRate: Int {

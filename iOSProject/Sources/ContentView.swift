@@ -1,61 +1,32 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// The app's single screen: a test bench for the engine.
+/// The app's single screen: where the user loads their own Keynote Gold files
+/// and then auditions the voices.
 ///
-/// Installing the app is what registers the voice with the system, so the
-/// primary job of this screen is to tell the user how to find the voice in
-/// VoiceOver and to let them audition it without leaving.
+/// The app ships no voice data, so this screen is not decoration — until a file
+/// is loaded there is nothing to hear and no voice in VoiceOver. That makes the
+/// import the first thing on the screen and the first thing VoiceOver reads.
 ///
 /// Only the navigation title is a real heading. The section labels below are
 /// plain text, which keeps the rotor's heading list to a single entry instead
 /// of making the user step through five of them.
 struct ContentView: View {
     @StateObject private var audioManager = AudioManager()
-    @State private var text: String = VoiceCatalog.sample(for: VoiceCatalog.englishBuild)
+    @State private var text: String = ""
+    @State private var isImporting = false
+    @State private var pendingRemoval: String?
+    /// Spoken after an import so the outcome is not just a visual change.
+    @State private var announcement: String?
 
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    TextField("Text to speak", text: $text, axis: .vertical)
-                        .lineLimit(3...6)
-                        .accessibilityLabel("Text to speak")
-                        .onChange(of: audioManager.selectedBuild) { _, newBuild in
-                            // Each build reads a different language, and a phrase
-                            // in the wrong script comes back as silence, so the
-                            // sample text follows the selected voice.
-                            text = VoiceCatalog.sample(for: newBuild)
-                        }
-                } header: {
-                    label("Preview text")
-                }
+                filesSection
 
-                Section {
-                    Picker("Voice", selection: $audioManager.selectedBuild) {
-                        ForEach(audioManager.buildChoices, id: \.self) { build in
-                            Text(build).tag(build)
-                        }
-                    }
-                    .accessibilityLabel("Engine build")
-                    .accessibilityHint("Chooses which generation and language of the engine to speak with.")
-
-                    Button {
-                        audioManager.speak(text: text)
-                    } label: {
-                        Label("Speak", systemImage: "play.circle.fill")
-                            .frame(minHeight: 44)
-                    }
-                    .disabled(audioManager.availableBuilds.isEmpty)
-
-                    Button(role: .destructive) {
-                        audioManager.stop()
-                    } label: {
-                        Label("Stop", systemImage: "stop.circle.fill")
-                            .frame(minHeight: 44)
-                    }
-                    .disabled(!audioManager.isSpeaking)
-                } header: {
-                    label("Test the engine")
+                if !audioManager.availableBuilds.isEmpty {
+                    previewSection
+                    voicesSection
                 }
 
                 if let error = audioManager.lastError {
@@ -66,20 +37,7 @@ struct ContentView: View {
                     }
                 }
 
-                Section {
-                    Text("To use this voice everywhere, open Settings, then Accessibility, then VoiceOver, then Speech, then Voice, then English. Keynote Gold appears in that list once this app is installed.")
-                        .font(.callout)
-                } header: {
-                    label("Use with VoiceOver")
-                }
-
-                Section {
-                    Text("\(audioManager.availableBuilds.count) engine builds are available. Where a build cannot read the text it is given, the English voice speaks instead.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } header: {
-                    label("About")
-                }
+                aboutSection
             }
             .navigationTitle("iBestSpeech")
             .safeAreaInset(edge: .bottom) {
@@ -94,7 +52,198 @@ struct ContentView: View {
                     .accessibilityLabel("Speaking")
                 }
             }
+            .fileImporter(isPresented: $isImporting,
+                          allowedContentTypes: Self.importableTypes,
+                          allowsMultipleSelection: false) { result in
+                handleImport(result)
+            }
         }
+    }
+
+    // MARK: - Sections
+
+    private var filesSection: some View {
+        Section {
+            Button {
+                isImporting = true
+            } label: {
+                Label(audioManager.isWaitingForCore
+                      ? "Load the core file"
+                      : "Load a Keynote Gold file",
+                      systemImage: "folder.badge.plus")
+                    .frame(minHeight: 44)
+            }
+            .accessibilityHint(audioManager.isWaitingForCore
+                ? "The 1998 file is waiting for the shared core module."
+                : "Opens the file picker. Choose a .dll from a Keynote Gold or BeSTspeech installation.")
+
+            if audioManager.words.isEmpty {
+                Text("No voice files are loaded, so there is nothing to speak with yet. Load a Keynote Gold file to begin.")
+                    .font(.callout)
+                    .accessibilityLabel("No voice files are loaded. Load a Keynote Gold file to begin.")
+            } else {
+                ForEach(audioManager.words) { word in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(word.displayName)
+                            Text("\(word.byteCount) bytes\(word.coreFileName == nil ? "" : ", with its core file")")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button {
+                            pendingRemoval = word.build
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Remove \(word.displayName)")
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(word.summary)
+                }
+            }
+        } header: {
+            label("Your voice files")
+        }
+        .confirmationDialog("Remove this voice file?",
+                            isPresented: Binding(get: { pendingRemoval != nil },
+                                                 set: { if !$0 { pendingRemoval = nil } })) {
+            Button("Remove", role: .destructive) {
+                if let build = pendingRemoval { audioManager.remove(build) }
+                pendingRemoval = nil
+            }
+            Button("Keep", role: .cancel) { pendingRemoval = nil }
+        }
+    }
+
+    private var previewSection: some View {
+        Section {
+            TextField("Text to speak", text: $text, axis: .vertical)
+                .lineLimit(3...6)
+                .accessibilityLabel("Text to speak")
+
+            Button {
+                audioManager.speak(text: text)
+            } label: {
+                Label("Speak", systemImage: "play.circle.fill")
+                    .frame(minHeight: 44)
+            }
+
+            Button(role: .destructive) {
+                audioManager.stop()
+            } label: {
+                Label("Stop", systemImage: "stop.circle.fill")
+                    .frame(minHeight: 44)
+            }
+            .disabled(!audioManager.isSpeaking)
+        } header: {
+            label("Preview text")
+        }
+    }
+
+    private var voicesSection: some View {
+        Section {
+            Picker("Voice", selection: $audioManager.selectedBuild) {
+                ForEach(audioManager.words) { word in
+                    Text(word.displayName).tag(word.build)
+                }
+            }
+            .accessibilityLabel("Engine voice")
+            .accessibilityHint("Chooses which loaded voice to speak with.")
+            .onChange(of: audioManager.selectedBuild) { _, newBuild in
+                // Each build reads a different language, and a phrase in the
+                // wrong script comes back as silence, so the sample text follows
+                // the selected voice.
+                text = VoiceCatalog.sample(for: newBuild)
+            }
+        } header: {
+            label("Test the engine")
+        }
+    }
+
+    private var aboutSection: some View {
+        Section {
+            if !ImportStore.isShared {
+                // A sideloaded build with the App Group stripped: the app can
+                // import and preview, but the extension cannot see the files, so
+                // the voice never reaches VoiceOver. Saying so is the difference
+                // between a bug report and a known limitation.
+                Text("This copy was installed without the shared container entitlement, so the voices work here but may not appear in VoiceOver. A build with that entitlement — the kind TestFlight installs — does not have this limit.")
+                    .font(.callout)
+                    .accessibilityLabel("Note. This copy was installed without the shared container entitlement, so the voices work here but may not appear in VoiceOver.")
+            }
+
+            Text("To use these voices everywhere, open Settings, then Accessibility, then VoiceOver, then Speech, then Voice. Each loaded voice appears in that list.")
+                .font(.callout)
+
+            Text("iBestSpeech includes the Keynote Gold speech engine. It does not include the voice data, which belongs to the people who made it. The files you load stay on this device and are used only by this app.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } header: {
+            label("How this works")
+        }
+    }
+
+    // MARK: - Import
+
+    /// What the picker will let the user choose.
+    ///
+    /// Left deliberately wide: the originals are 16-bit Windows libraries and the
+    /// system has no type for those, so a narrow filter would make the very files
+    /// this app needs unselectable. The contents are what decide whether a file is
+    /// usable, not its type.
+    private static var importableTypes: [UTType] {
+        var types: [UTType] = [.item, .data]
+        if let dll = UTType(filenameExtension: "dll") { types.append(dll) }
+        return types
+    }
+
+    private func handleImport(_ result: Result<[URL], Error>) {
+        let outcome: ImportOutcome?
+        switch result {
+        case .failure(let error):
+            announcement = "The file could not be opened: \(error.localizedDescription)"
+            outcome = nil
+        case .success(let urls):
+            guard let url = urls.first else { outcome = nil; return }
+            // A file from the picker lives outside the app's container and the
+            // access is scoped, so the bytes are read now and copied into the
+            // shared container rather than referenced.
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+
+            guard let data = try? Data(contentsOf: url) else {
+                announcement = "That file could not be read."
+                outcome = nil
+                break
+            }
+            outcome = audioManager.addImport(data: data,
+                                             fileName: url.lastPathComponent)
+        }
+
+        guard let outcome else {
+            announce(announcement)
+            return
+        }
+
+        switch outcome {
+        case .identified(let word):
+            announce("Loaded \(word.displayName).")
+        case .needsCore:
+            announce("That file needs a second file. Pick the shared core module next.")
+        case .ambiguous(let options):
+            announce("That file works as more than one voice: \(options.map(\.displayName).joined(separator: ", ")). It was not added.")
+        case .notEngineFile:
+            announce(audioManager.lastError ?? "That is not a Keynote Gold file.")
+        }
+    }
+
+    /// Speaks an outcome so it is not a silent visual change for a blind user.
+    private func announce(_ message: String?) {
+        guard let message else { return }
+        announcement = message
+        UIAccessibility.post(notification: .announcement, argument: message)
     }
 
     /// A section label that is styled like a header but carries no heading trait,

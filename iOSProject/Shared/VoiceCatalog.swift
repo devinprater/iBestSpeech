@@ -97,6 +97,32 @@ enum VoiceCatalog {
     static func sample(for build: String) -> String {
         info(for: build)?.sample ?? "Hello, this is the Keynote Gold voice."
     }
+
+    /// What to call a build in the interface.
+    ///
+    /// The build names are the library's own (`2006ENG`, `1998FRN`), which say
+    /// nothing to the person choosing a voice. This spells the same information
+    /// out: the generation, which is the voice's character, and the language it
+    /// speaks. The engine's generations really do sound different — that is why
+    /// both are offered rather than only the newest.
+    static func displayName(for build: String) -> String {
+        let generation: String
+        if build.hasPrefix("1995") {
+            generation = "Keynote Gold 1995"
+        } else if build.hasPrefix("1998") {
+            generation = "Keynote Gold 1998"
+        } else if build.hasPrefix("2006") {
+            generation = "Keynote Gold 2006"
+        } else {
+            generation = "Keynote Gold"
+        }
+
+        guard let info = info(for: build) else { return generation }
+
+        let languageName = Locale(identifier: "en-US")
+            .localizedString(forIdentifier: info.language) ?? info.language
+        return "\(generation) \(languageName)"
+    }
 }
 
 extension String {
