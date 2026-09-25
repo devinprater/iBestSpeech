@@ -180,14 +180,60 @@ int main(int argc, char **argv) {
 '''
 
 
-def build(tmp, upstream, name, source, extra_src=None):
+# Stand-in for the generated table index, matching iOSProject/Engine/no-tables.c.
+# Returning NULL is what makes bst_open() unavailable while leaving
+# bst_open_image() -- which reads the caller's own file -- working.
+NO_TABLES = r'''
+#include <stddef.h>
+#include "bst_text.h"
+const bst_lifted *bst_lifted_for(const char *build) {
+    (void)build;
+    return NULL;
+}
+'''
+
+# The build names, straight from the library. Asking bstspeak instead would
+# require a built tool, which a fresh clone does not have.
+LIST = r'''
+#include <stdio.h>
+#include <string.h>
+#include "bst.h"
+int main(void) {
+    const char *names[64];
+    int n = bst_builds(names, 64);
+    for (int i = 0; i < n; i++) printf("%s%s", i ? " " : "", names[i]);
+    printf("\n");
+    return 0;
+}
+'''
+
+
+def engine_sources(upstream):
+    """Every C source of the engine except the lifted table modules.
+
+    Compiled directly rather than linking build/libbst.a, for two reasons: a
+    fresh clone has no archive built, and the tables must be left OUT -- this
+    test is about a build that ships no voice data, and linking the tables in
+    would make identification pass for the wrong reason.
+    """
+    src_root = os.path.join(upstream, "src")
+    table_dir = os.path.join(src_root, "data") + os.sep
+    sources = sorted(glob.glob(os.path.join(src_root, "**", "*.c"), recursive=True))
+    return [s for s in sources if not s.startswith(table_dir)]
+
+
+def build(tmp, upstream, name, source, extra_src=None, engine=None, stub=True):
     path = os.path.join(tmp, name + ".c")
     with open(path, "w") as fh:
         fh.write(source)
     srcs = [path] + (extra_src or [])
     out = os.path.join(tmp, name)
+    # The stub stands in for the table index, exactly as the public build does.
+    # It must NOT be linked when the tables are present -- src/data/lifted.c
+    # already defines bst_lifted_for, and two definitions will not link.
+    tail = [STUB] if stub else []
     cmd = ["clang", "-O2", "-I", os.path.join(upstream, "include"),
-           *srcs, os.path.join(upstream, "build", "libbst.a"), "-o", out, "-lm"]
+           *srcs, *(engine or []), *tail, "-o", out, "-lm"]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         sys.exit(f"could not build {name}:\n{proc.stderr[:2000]}")
@@ -200,20 +246,39 @@ def main():
     opts = ap.parse_args()
     upstream = os.path.abspath(os.path.expanduser(opts.upstream))
 
-    lib = os.path.join(upstream, "build", "libbst.a")
-    if not os.path.isfile(lib):
-        sys.exit(f"no {lib}; run `make` in {upstream} first")
+    # Compile the engine from source, without its tables. A prebuilt archive is
+    # not required and must not be used: it may have been built with tables, and
+    # it may not exist at all on a fresh checkout.
+    engine = engine_sources(upstream)
+    if not engine:
+        sys.exit(f"no sources under {upstream}/src")
+    print(f"compiling the engine without tables ({len(engine)} sources)")
 
     failures = []
     with tempfile.TemporaryDirectory() as tmp:
-        mkimage = build(tmp, upstream, "mkimage_import", MKIMAGE)
-        identify = build(tmp, upstream, "identify_import", IDENTIFY)
-        isne = build(tmp, upstream, "isne_import", ISNE)
+        # The stub, written once and linked into every probe.
+        global STUB
+        STUB = os.path.join(tmp, "no-tables.c")
+        with open(STUB, "w") as fh:
+            fh.write(NO_TABLES)
+
+        # mkimage rebuilds an image from a build's lifted tables, so it needs the
+        # tables; the identification probes must NOT have them, or every build
+        # would speak from its own compiled-in data and the test would prove
+        # nothing. Two separate configurations, deliberately.
+        with_tables = sorted(glob.glob(os.path.join(upstream, "src", "**", "*.c"),
+                                       recursive=True))
+        mkimage = build(tmp, upstream, "mkimage_import", MKIMAGE,
+                        engine=with_tables, stub=False)
+        identify = build(tmp, upstream, "identify_import", IDENTIFY, engine=engine)
+        isne = build(tmp, upstream, "isne_import", ISNE, engine=engine)
+        listb = build(tmp, upstream, "list_import", LIST, engine=engine)
 
         def run(cmd):
             return subprocess.run(cmd, capture_output=True, text=True).stdout.strip()
 
-        builds = run([os.path.join(upstream, "build", "bstspeak"), "--list"]).split()
+        # bst_builds(), not `bstspeak --list`: a fresh clone has no built tools.
+        builds = run([listb]).split()
         if len(builds) != 20:
             failures.append(f"expected 20 builds, got {len(builds)}")
 
