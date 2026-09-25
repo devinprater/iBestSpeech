@@ -358,6 +358,16 @@ def main():
             "(make_sideload_ipa.py --keep-tables).")
 
     info = project_info()
+
+    # The engine archive is built by the workflow (build_frameworks.py), not
+    # here, so check it before anything else. Without this the failure is
+    # xcodebuild reporting a missing dependency, which does not say what to run.
+    framework = PROJECT_DIR / "Frameworks" / FRAMEWORK
+    if not framework.exists():
+        raise SystemExit(
+            f"{framework} is missing. Run:\n"
+            f"  python3 build_frameworks.py --upstream <openbst> --no-tables")
+
     print(f"iBestSpeech {info['version']} ({info['build']}), team {info['team_id']}")
     print(f"  bundle: {info['bundle_id']} + {info['extension_bundle_id']}")
     print(f"  engine: {FRAMEWORK} (no voice data; testers import their own)")

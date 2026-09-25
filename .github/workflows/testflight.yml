@@ -112,6 +112,39 @@ jobs:
           fi
           echo "the three App Store Connect secrets are present"
 
+      - name: Build the table-free engine framework
+        run: |
+          set -euo pipefail
+          # The framework is not built by make_store_ipa.py; the workflow does it,
+          # exactly as release.yml does. Only the table-free one -- a store build
+          # must not link the voice data.
+          cd iOSProject
+          python3 build_frameworks.py --upstream "$RUNNER_TEMP/openbst" --no-tables
+          test -d Frameworks/OpenBSTNoTables.xcframework \
+            || { echo "::error::the table-free framework was not produced"; exit 1; }
+          # Prove it carries no voice data, by the same measurement release.yml
+          # uses: the table symbols are simply absent from the archive.
+          ARCHIVE="Frameworks/OpenBSTNoTables.xcframework/ios-arm64/libbst_device.a"
+          test -f "$ARCHIVE" || { echo "::error::no device archive in the framework"; exit 1; }
+          # Materialise before grepping: `nm | grep -q` fails under pipefail when
+          # the symbol IS present, because grep closes the pipe early.
+          SYMS="$RUNNER_TEMP/store-syms.txt"
+          nm "$ARCHIVE" > "$SYMS" 2>/dev/null || true
+          # An empty symbol list means the probe could not read the archive, which
+          # must not read as "no voice data" -- that is the exact false pass this
+          # check exists to prevent.
+          if [ ! -s "$SYMS" ]; then
+            echo "::error::could not read symbols from the store archive; cannot"
+            echo "verify that it carries no voice data"
+            exit 1
+          fi
+          DATA=$(grep -c 'BST_DATA_' "$SYMS" || true)
+          echo "BST_DATA_ symbols in the store archive: $DATA"
+          if [ "$DATA" != "0" ]; then
+            echo "::error::the store build links voice data; it must not"
+            exit 1
+          fi
+
       - name: Build the signed store .ipa
         run: |
           set -euo pipefail
