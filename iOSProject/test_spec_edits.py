@@ -124,6 +124,56 @@ def main():
     check("the icon catalog is named by its exact path",
           "- Assets.xcassets" in source and "- Assets\n" not in source)
 
+    # --- the icon KEY, not just the catalog ---------------------------------
+    #
+    # A catalog that compiles is not an icon as far as App Store Connect is
+    # concerned: it also wants CFBundleIconName in the built plist, and this
+    # project sets GENERATE_INFOPLIST_FILE: NO, so nothing injects it. The
+    # sources can agree perfectly -- catalog present, ASSETCATALOG_COMPILER_
+    # APPICON_NAME set -- and the upload still fails with ITMS-90022, which is
+    # exactly what happened at v1.0.12.
+    #
+    # Read as text rather than through plistlib: the file is hand-written and a
+    # round-trip reorders it, so a real problem would be hidden in churn.
+    app_plist = (HERE / "Info" / "Info.plist").read_text(encoding="utf-8")
+    icon_name = ""
+    for line in source.splitlines():
+        s = line.strip()
+        if s.startswith("ASSETCATALOG_COMPILER_APPICON_NAME:"):
+            icon_name = s.split(":", 1)[1].strip()
+
+    def plist_string(plisttext, key):
+        marker = f"<key>{key}</key>"
+        if marker not in plisttext:
+            return None
+        after = plisttext.split(marker, 1)[1]
+        if "<string>" not in after:
+            return None
+        return after.split("<string>", 1)[1].split("</string>", 1)[0].strip()
+
+    check("Info.plist declares CFBundleIconName",
+          bool(plist_string(app_plist, "CFBundleIconName")),
+          "absent -- an upload fails with ITMS-90022")
+    check("CFBundleIconName names the catalog project.yml compiles",
+          plist_string(app_plist, "CFBundleIconName") == icon_name,
+          f"plist says {plist_string(app_plist, 'CFBundleIconName')!r}, "
+          f"project.yml says {icon_name!r}")
+
+    # --- app and extension must carry the SAME version ----------------------
+    #
+    # Apple rejects an upload whose embedded extension disagrees with its
+    # parent. bump_version.py updates both files, but it is run BY HAND and the
+    # release workflow never calls it, so a hand-bump can update one and not the
+    # other -- which is how the app came to ship 1.0.12 (13) with a provider
+    # still at 1.0.11 (12).
+    ext_plist = (HERE / "Info" / "ExtensionInfo.plist").read_text(encoding="utf-8")
+    for key in ("CFBundleShortVersionString", "CFBundleVersion"):
+        check(f"the extension's {key} matches the app's",
+              plist_string(ext_plist, key) == plist_string(app_plist, key),
+              f"app {plist_string(app_plist, key)!r} vs "
+              f"extension {plist_string(ext_plist, key)!r} "
+              f"-- Apple rejects a mismatched extension")
+
     # --- and the default is the table-free kind -----------------------------
     parser_defaults = {}
     # Read the defaults straight out of argparse by asking the script.

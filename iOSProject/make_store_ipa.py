@@ -299,6 +299,29 @@ def verify_bundle(app, info, signed=True):
             f"version is {plist.get('CFBundleShortVersionString')}, "
             f"expected {info['version']}")
 
+    # --- the extension must agree with the app, version AND build -----------
+    #
+    # Apple refuses an upload whose embedded extension carries a different
+    # version from its parent. The two plists are bumped BY HAND -- this repo's
+    # release workflow never calls bump_version.py -- so they drifted: at
+    # v1.0.12 the app said 1.0.12 (13) while the provider still said 1.0.11
+    # (12). A hand-bump that updates one file and not the other is a silent
+    # upload failure, so it is checked here where it can be seen.
+    if extension.is_dir():
+        ext = read_plist_values(extension / "Info.plist",
+                                ["CFBundleShortVersionString", "CFBundleVersion"])
+        if ext.get("CFBundleShortVersionString") != plist.get("CFBundleShortVersionString"):
+            failures.append(
+                f"the extension's version is "
+                f"{ext.get('CFBundleShortVersionString')} but the app's is "
+                f"{plist.get('CFBundleShortVersionString')}; Apple rejects a "
+                f"mismatched extension")
+        if ext.get("CFBundleVersion") != plist.get("CFBundleVersion"):
+            failures.append(
+                f"the extension's build is {ext.get('CFBundleVersion')} but the "
+                f"app's is {plist.get('CFBundleVersion')}; Apple rejects a "
+                f"mismatched extension")
+
     # --- and it must NOT carry the tables ---------------------------------
     # The tables are megabytes; a store build that still has them is both a
     # rights problem and a sign the wrong framework was linked.
