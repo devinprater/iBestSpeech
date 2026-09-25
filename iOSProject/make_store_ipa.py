@@ -44,9 +44,15 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parent
 SOURCE_SPEC = PROJECT_DIR / "project.yml"
 INFO_PLIST = PROJECT_DIR / "Info" / "Info.plist"
-EXTENSION_INFO = PROJECT_DIR / "Info" / "ExtensionInfo.plist"
 TEMP_PROJECT_NAME = "iBestSpeechStore"
 APP_GROUP = "group.com.devin.ibestspeech"
+
+# The scheme is derived from the TARGET, not from the project: renaming the
+# project does not rename the targets, and XcodeGen auto-generates one scheme per
+# target. So this stays `iBestSpeech` even though the project is renamed --
+# passing the renamed project name here fails with "scheme not found", which
+# reads like a corrupt project rather than a wrong flag.
+SCHEME = "iBestSpeech"
 
 # The table-free engine. A store build must not carry the tables either.
 FRAMEWORK = "OpenBSTNoTables.xcframework"
@@ -234,16 +240,21 @@ def verify_ipa(ipa_path, info):
     failures = []
     with tempfile.TemporaryDirectory() as tmp:
         run(["unzip", "-q", str(ipa_path), "-d", tmp], "unpack for inspection")
-        app = Path(tmp) / "Payload" / f"{TEMP_PROJECT_NAME}.app"
-        # Xcode names the .app after PRODUCT_NAME, which the spec rewrite has
-        # changed; fall back to the first .app if that guess is wrong.
+        # Xcode names the bundle after PRODUCT_NAME (iBestSpeech), NOT after the
+        # project, so the renamed project does not rename the product. Find it.
+        app = Path(tmp) / "Payload" / "iBestSpeech.app"
         if not app.is_dir():
             candidates = list((Path(tmp) / "Payload").glob("*.app"))
             if not candidates:
                 return ["the .ipa contains no Payload/*.app"]
             app = candidates[0]
 
-        main_binary = app / app.stem
+        with open(app / "Info.plist", "rb") as fh:
+            plist = plistlib.load(fh)
+        # The executable name comes from the plist, so it cannot drift from the
+        # bundle name the way a guess can.
+        executable = plist.get("CFBundleExecutable") or app.stem
+        main_binary = app / executable
         extension = app / "PlugIns" / "iBestSpeechProvider.appex"
 
         # --- signed, and the signature is valid ---------------------------
@@ -276,8 +287,6 @@ def verify_ipa(ipa_path, info):
         # --- the icon, without which ITMS-90022 ---------------------------
         if not (app / "Assets.car").is_file():
             failures.append("no Assets.car: the icon catalog did not compile")
-        with open(app / "Info.plist", "rb") as fh:
-            plist = plistlib.load(fh)
         if not plist.get("CFBundleIconName"):
             failures.append("CFBundleIconName missing (ITMS-90022)")
         if plist.get("CFBundleIdentifier") != info["bundle_id"]:
@@ -375,7 +384,7 @@ def main():
         # be uploaded, and code signing is skipped for it entirely.
         run(["xcodebuild", "archive",
              "-project", f"{TEMP_PROJECT_NAME}.xcodeproj",
-             "-scheme", TEMP_PROJECT_NAME,
+             "-scheme", SCHEME,
              "-configuration", args.configuration,
              "-destination", "generic/platform=iOS",
              "-archivePath", str(archive),
@@ -385,6 +394,11 @@ def main():
              "CURRENT_PROJECT_VERSION=" + info["build"],
              ],
             "archive", cwd=PROJECT_DIR)
+
+        # Do not take the exit code as proof: require the archive to be there.
+        if not Path(archive).is_dir():
+            raise SystemExit(f"xcodebuild reported success but wrote no archive "
+                             f"at {archive}")
 
         # Export re-signs for distribution and produces the .ipa.
         run(["xcodebuild", "-exportArchive",

@@ -53,7 +53,17 @@ def main():
           info["extension_bundle_id"].startswith(info["bundle_id"] + "."))
     check("a version was read", bool(info["version"]))
 
-    # --- the table-free engine, always ------------------------------------
+    # --- the scheme is the TARGET's name, not the project's ----------------
+    # XcodeGen names schemes after targets and the rename only touches `name:`,
+    # so using the renamed project name here fails with "scheme not found" --
+    # which reads like a corrupt project rather than a wrong flag.
+    check("the scheme is the target name, not the renamed project",
+          m.SCHEME == "iBestSpeech" and m.SCHEME != m.TEMP_PROJECT_NAME,
+          f"SCHEME={m.SCHEME} TEMP_PROJECT_NAME={m.TEMP_PROJECT_NAME}")
+    check("the scheme's target really exists in the spec",
+          f"  {m.SCHEME}:" in (HERE / "project.yml").read_text())
+
+    # --- the store build uses the table-free framework, always -------------
     check("the store build uses the table-free framework",
           "NoTables" in m.FRAMEWORK, m.FRAMEWORK)
     # A store build that linked the tables would ship someone else's data.
