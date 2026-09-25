@@ -169,6 +169,21 @@ def main():
           proc.returncode != 0 and "cannot carry the tables" in (proc.stdout + proc.stderr),
           (proc.stdout + proc.stderr)[:200])
 
+    # --- xcodegen's two traps, both of which cost a CI run ----------------
+    # `--project` is the OUTPUT DIRECTORY, not a filename. Passing a filename
+    # creates `<name>.xcodeproj/<name>.xcodeproj` and xcodegen dies copying
+    # XcodeGen into it. And `--spec` must be a SEPARATE file, never project.yml
+    # itself: the generated project records the spec path, so editing the real
+    # spec leaves the repo dirty and confuses the next run.
+    check("--project is an output directory, not a filename",
+          '"--project", "."' in src and 'f"{TEMP_PROJECT_NAME}.xcodeproj"' not in src)
+    check("--spec points at a separate file, not project.yml",
+          '"--spec", TEMP_SPEC.name' in src and '"--spec", "project.yml"' not in src)
+    check("the temporary spec and project are clean up afterwards",
+          "TEMP_SPEC" in src and "finally:" in src and "rmtree" in src)
+    check("a missing generated project is reported, not assumed",
+          "wrote no project at" in src)
+
     # --- the dry-run mode exists, and its contract is enforced ------------
     # Without a certificate the build cannot be signed, so the pipeline is only
     # testable if there is a mode that skips signing. These assertions are about

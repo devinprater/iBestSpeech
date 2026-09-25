@@ -45,6 +45,7 @@ PROJECT_DIR = Path(__file__).resolve().parent
 SOURCE_SPEC = PROJECT_DIR / "project.yml"
 INFO_PLIST = PROJECT_DIR / "Info" / "Info.plist"
 TEMP_PROJECT_NAME = "iBestSpeechStore"
+TEMP_SPEC = PROJECT_DIR / "project-store.yml"
 APP_GROUP = "group.com.devin.ibestspeech"
 
 # The scheme is derived from the TARGET, not from the project: renaming the
@@ -378,8 +379,15 @@ def main():
     out.parent.mkdir(parents=True, exist_ok=True)
 
     # XcodeGen reads project.yml and writes iBestSpeechStore.xcodeproj.
-    (PROJECT_DIR / "project.yml").write_text(prepare_spec(info))
-    print(f"  wrote project.yml for {TEMP_PROJECT_NAME}")
+    #
+    # `--spec` points at a SEPARATE file, never at project.yml itself: the
+    # generated project records the spec path, so a build reading a modified
+    # project.yml would leave the repository dirty and confuse the next run.
+    # `--project` is the OUTPUT DIRECTORY, not a filename -- passing a filename
+    # creates `<name>.xcodeproj/<name>.xcodeproj` and xcodegen dies trying to
+    # copy XcodeGen into it. `"."` is what the sideload build uses.
+    TEMP_SPEC.write_text(prepare_spec(info))
+    print(f"  wrote {TEMP_SPEC.name} for {TEMP_PROJECT_NAME}")
 
     auth = []
     if args.key_path:
@@ -397,67 +405,87 @@ def main():
     else:
         print("  warning: no API key, so signing depends on a logged-in Xcode")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        options_path = write_export_options(Path(tmp) / "ExportOptions.plist",
-                                            export_options(info, args.method))
-        archive = Path(tmp) / f"{TEMP_PROJECT_NAME}.xcarchive"
+    generated_project = PROJECT_DIR / f"{TEMP_PROJECT_NAME}.xcodeproj"
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            options_path = write_export_options(Path(tmp) / "ExportOptions.plist",
+                                                export_options(info, args.method))
+            archive = Path(tmp) / f"{TEMP_PROJECT_NAME}.xcarchive"
 
-        run(["xcodegen", "generate", "--spec", "project.yml",
-             "--project", f"{TEMP_PROJECT_NAME}.xcodeproj"],
-            "generate the Xcode project", cwd=PROJECT_DIR)
+            run(["xcodegen", "generate", "--spec", TEMP_SPEC.name,
+                 "--project", "."],
+                "generate the Xcode project", cwd=PROJECT_DIR)
 
-        # Archive for a real device, not a simulator: a simulator build cannot
-        # be uploaded, and code signing is skipped for it entirely.
-        archive_cmd = ["xcodebuild", "archive",
-                       "-project", f"{TEMP_PROJECT_NAME}.xcodeproj",
-                       "-scheme", SCHEME,
-                       "-configuration", args.configuration,
-                       "-destination", "generic/platform=iOS",
-                       "-archivePath", str(archive)]
-        if args.unsigned:
-            # No certificate on a dry run, so sign to run locally only -- which
-            # still produces a real archive to export and inspect.
-            archive_cmd += ["CODE_SIGNING_ALLOWED=NO"]
-        else:
-            archive_cmd += ["-allowProvisioningUpdates", *auth]
-        archive_cmd += ["MARKETING_VERSION=" + info["version"],
-                        "CURRENT_PROJECT_VERSION=" + info["build"]]
-        run(archive_cmd, "archive", cwd=PROJECT_DIR)
+            # Do not take xcodegen's exit code as proof either: without the
+            # project the archive step fails with a confusing "no such project".
+            if not generated_project.is_dir():
+                raise SystemExit(
+                    f"xcodegen reported success but wrote no project at "
+                    f"{generated_project}")
 
-        # Do not take the exit code as proof: require the archive to be there.
-        if not Path(archive).is_dir():
-            raise SystemExit(f"xcodebuild reported success but wrote no archive "
-                             f"at {archive}")
+            # Archive for a real device, not a simulator: a simulator build cannot
+            # be uploaded, and code signing is skipped for it entirely.
+            archive_cmd = ["xcodebuild", "archive",
+                           "-project", generated_project.name,
+                           "-scheme", SCHEME,
+                           "-configuration", args.configuration,
+                           "-destination", "generic/platform=iOS",
+                           "-archivePath", str(archive)]
+            if args.unsigned:
+                # No certificate on a dry run, so sign to run locally only -- which
+                # still produces a real archive to export and inspect.
+                archive_cmd += ["CODE_SIGNING_ALLOWED=NO"]
+            else:
+                archive_cmd += ["-allowProvisioningUpdates", *auth]
+            archive_cmd += ["MARKETING_VERSION=" + info["version"],
+                            "CURRENT_PROJECT_VERSION=" + info["build"]]
+            run(archive_cmd, "archive", cwd=PROJECT_DIR)
 
-        # Export re-signs for distribution and produces the .ipa. With
-        # --unsigned there is no certificate to sign with, so this uses the same
-        # export path but with signing off, which still exercises xcodebuild's
-        # packaging -- that is what makes the dry run meaningful.
-        if args.unsigned:
-            run(["xcodebuild", "-exportArchive",
-                 "-archivePath", str(archive),
-                 "-exportOptionsPlist", str(options_path),
-                 "-exportPath", str(out.parent),
-                 ], "export the .ipa (unsigned)", cwd=PROJECT_DIR)
-        else:
-            run(["xcodebuild", "-exportArchive",
-                 "-archivePath", str(archive),
-                 "-exportOptionsPlist", str(options_path),
-                 "-exportPath", str(out.parent),
-                 "-allowProvisioningUpdates",
-                 *auth,
-                 ],
-                "export the signed .ipa", cwd=PROJECT_DIR)
+            # Do not take the exit code as proof: require the archive to be there.
+            if not Path(archive).is_dir():
+                raise SystemExit(f"xcodebuild reported success but wrote no archive "
+                                 f"at {archive}")
 
-        # xcodebuild names the exported .ipa after the SCHEME/app, not after the
-        # renamed project, so find what it wrote rather than guessing.
-        if not out.is_file():
-            candidates = [p for p in out.parent.glob("*.ipa") if p != out]
-            # Newest first: a stale ipa from an earlier run must not be mistaken
-            # for the one just exported.
-            candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-            if candidates:
-                shutil.move(str(candidates[0]), str(out))
+            # Export re-signs for distribution and produces the .ipa. With
+            # --unsigned there is no certificate to sign with, so this uses the same
+            # export path but with signing off, which still exercises xcodebuild's
+            # packaging -- that is what makes the dry run meaningful.
+            if args.unsigned:
+                run(["xcodebuild", "-exportArchive",
+                     "-archivePath", str(archive),
+                     "-exportOptionsPlist", str(options_path),
+                     "-exportPath", str(out.parent),
+                     ], "export the .ipa (unsigned)", cwd=PROJECT_DIR)
+            else:
+                run(["xcodebuild", "-exportArchive",
+                     "-archivePath", str(archive),
+                     "-exportOptionsPlist", str(options_path),
+                     "-exportPath", str(out.parent),
+                     "-allowProvisioningUpdates",
+                     *auth,
+                     ],
+                    "export the signed .ipa", cwd=PROJECT_DIR)
+
+            # xcodebuild names the exported .ipa after the SCHEME/app, not after the
+            # renamed project, so find what it wrote rather than guessing.
+            if not out.is_file():
+                candidates = [p for p in out.parent.glob("*.ipa") if p != out]
+                # Newest first: a stale ipa from an earlier run must not be mistaken
+                # for the one just exported.
+                candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                if candidates:
+                    shutil.move(str(candidates[0]), str(out))
+    finally:
+        # Leave nothing behind: the generated project and the temporary spec are
+        # build products, and a leftover spec would confuse the next run.
+        for path in (TEMP_SPEC, generated_project):
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+            elif path.exists():
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
 
     if not out.is_file():
         raise SystemExit(f"no .ipa was produced at {out}")
