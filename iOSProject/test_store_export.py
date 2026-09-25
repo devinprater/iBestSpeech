@@ -175,11 +175,12 @@ def main():
     # XcodeGen into it. And `--spec` must be a SEPARATE file, never project.yml
     # itself: the generated project records the spec path, so editing the real
     # spec leaves the repo dirty and confuses the next run.
+    src = (HERE / "make_store_ipa.py").read_text()
     check("--project is an output directory, not a filename",
           '"--project", "."' in src and 'f"{TEMP_PROJECT_NAME}.xcodeproj"' not in src)
     check("--spec points at a separate file, not project.yml",
           '"--spec", TEMP_SPEC.name' in src and '"--spec", "project.yml"' not in src)
-    check("the temporary spec and project are clean up afterwards",
+    check("the temporary spec and project are cleaned up afterwards",
           "TEMP_SPEC" in src and "finally:" in src and "rmtree" in src)
     check("a missing generated project is reported, not assumed",
           "wrote no project at" in src)
@@ -188,7 +189,6 @@ def main():
     # Without a certificate the build cannot be signed, so the pipeline is only
     # testable if there is a mode that skips signing. These assertions are about
     # that mode staying honest: it must not claim to have verified a signature.
-    src = (HERE / "make_store_ipa.py").read_text()
     check("there is an --unsigned mode for a dry run", "--unsigned" in src)
     check("--unsigned and --key-path are refused together",
           "contradictory" in src)
