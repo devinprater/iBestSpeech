@@ -368,8 +368,11 @@ public enum SSMLText {
     // MARK: - Text preparation
 
     /// Turns accumulated raw text into what the engine should be given.
-    static func finish(_ raw: String, sayAs: String?,
-                       language: String = "en-US") -> String {
+    /// Public so the APP's preview can run it too, not only the extension. A fix
+    /// that reaches one path and not the other is how the app came to speak text
+    /// its own extension had already been taught to repair.
+    public static func finish(_ raw: String, sayAs: String?,
+                              language: String = "en-US") -> String {
         var text = decodeEntities(raw)
         // Emoji and other characters the engine cannot read at all, before the
         // fold: the fold would keep the character (it has no ASCII form to fold

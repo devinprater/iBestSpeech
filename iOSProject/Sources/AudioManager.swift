@@ -299,9 +299,20 @@ final class AudioManager: ObservableObject {
         }
         let rate = bst.sampleRate
 
+        // The text layer runs HERE, not only in the extension.
+        //
+        // Only the VoiceOver extension called it, so the same notification spoke
+        // in VoiceOver and stopped dead in this app's own preview: the engine was
+        // handed a raw ellipsis, which is 0 samples on the 1995 and 1998 voices
+        // and garbled on 2006. Everything the layer does -- folding typography,
+        // softening commas, separating adjacent numbers -- belongs on BOTH paths,
+        // because the preview is what the user tests with and what they report
+        // bugs against.
+        let prepared = SSMLText.finish(text, sayAs: nil)
+
         // A build that reads Latin takes the string as UTF-8.
         guard let codePage = info.codePage else {
-            guard let samples = bst.synthesize(text), !samples.isEmpty else {
+            guard let samples = bst.synthesize(prepared), !samples.isEmpty else {
                 return .failure("The \(build) voice produced no audio.")
             }
             return .success(Utterance(samples: samples, rate: rate))
@@ -311,7 +322,7 @@ final class AudioManager: ObservableObject {
         // original was driven and it gives the closest output. A build handed a
         // script it does not read returns a sample count and then all zeros, so
         // the result is checked for actual signal, not just for a length.
-        if let bytes = text.encoded(as: codePage), !bytes.isEmpty {
+        if let bytes = prepared.encoded(as: codePage), !bytes.isEmpty {
             let samples = Array(bytes).withUnsafeBufferPointer { buf -> [Int16]? in
                 bst.producesSpeech(for: buf) ? bst.synthesize(bytes: buf) : nil
             }

@@ -456,6 +456,50 @@ struct SSMLTextTests {
         expect("<speak>mai</speak>", "mai", "a substring is left alone")
         expect("<speak>hello world</speak>", "hello world", "plain text is untouched")
 
+        // MARK: The two reported bugs, as regression tests
+        //
+        // Bug 1 (reported as "it stops on the number six"): iOS truncates a
+        // long URL with a single-character ellipsis, U+2026. On the 1995 and
+        // 1998 voices that character is SILENT and takes the rest of the
+        // utterance with it -- measured on the user's own b32_tts.dll,
+        // "accent-ssi26\u{2026}" is 0 samples and the three-dot form is 30,799.
+        // The last sound heard is the `6` of `ssi26`, which is why the bug was
+        // reported against the digit.
+        expect("<speak>accent-ssi26\u{2026}</speak>", "accent-ssi26...",
+               "a literal ellipsis folds to three dots")
+        expect("<speak>\u{2026}</speak>", "...", "an ellipsis alone folds")
+        expect("<speak>accent-ssi26&hellip; button</speak>", "accent-ssi26... button",
+               "the &hellip; entity folds too")
+
+        // Bug 2 (reported as "both engines stop after the word support"): the
+        // Googlebook report carries four emoji, each with its reaction count
+        // behind it. An emoji ALONE is zero samples -- total silence -- on the
+        // 1995 voice, measured on the user's own b32_tts.dll, so a reaction row
+        // read literally announces counts with nothing to attach them to.
+        // Nothing was found here that truncates the tail at "support": the
+        // engine speaks this whole report on all twenty builds and on TruVoice
+        // too, raw or folded. What the emoji DO break is the meaning of the
+        // row, so they become their own words rather than being deleted:
+        // "red heart 47" is how the reaction reads, and a bare "47" loses it.
+        expect("<speak>reactions: \u{2764} 47, \u{1F44D} 22, unread</speak>",
+               "reactions: red heart 47: thumbs up 22: unread",
+               "emoji in a reaction row become words, the counts stay")
+        // The two halves of the same report that were heard correctly must stay
+        // correct: the comma chain and the price after it.
+        expect("<speak>MONA, 2 hours ago, Tamas G , it's here.</speak>",
+               "MONA: 2 hours ago: Tamas G: it's here.",
+               "the notification's comma chain becomes colons")
+        expect("<speak>starting at $899.</speak>", "starting at $899.",
+               "the price survives unchanged")
+        // The all-caps spec words are left as written -- the engine spells a
+        // capital run, which is what "NPUs" and "TOPS" need. "AI" is the one
+        // exception, and deliberately so: the pronunciation dictionary expands
+        // it to "A I" so the engine reads the two letters rather than trying to
+        // say "ai" as a word.
+        expect("<speak>dedicated NPUs delivering over 45 TOPS of AI performance</speak>",
+               "dedicated NPUs delivering over 45 TOPS of A I performance",
+               "all-caps spec words stay, and AI spells its letters")
+
         print("\n\(checks - failures.count)/\(checks) passed")
         if failures.isEmpty { exit(0) }
         print("\nFAILURES:")

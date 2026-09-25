@@ -38,6 +38,7 @@ struct ContentView: View {
                 }
 
                 aboutSection
+                versionSection
             }
             .navigationTitle("iBestSpeech")
             .safeAreaInset(edge: .bottom) {
@@ -252,8 +253,37 @@ struct ContentView: View {
         Text(text)
             .font(.subheadline)
             .foregroundStyle(.secondary)
+            // No all-caps. SwiftUI uppercases a section header by default, and
+            // that is not merely a style choice for this app: the engine SPELLS
+            // an all-caps run letter by letter, so "Your voice files" would be
+            // read out as a string of capitals by the app's own voices. Asking
+            // for the text as written also reads better on screen.
+            .textCase(nil)
             .accessibilityAddTraits(.isStaticText)
             .accessibilityRemoveTraits(.isHeader)
+    }
+
+    /// What this copy of the app is, so a bug report can name the build.
+    ///
+    /// Read from the bundle rather than written here: a version hard-coded in a
+    /// view is a version that goes stale the first time a release is cut, and a
+    /// wrong version in a bug report is worse than none.
+    private static var versionText: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let build = info?["CFBundleVersion"] as? String ?? "unknown"
+        return "Version \(version), build \(build)"
+    }
+
+    private var versionSection: some View {
+        Section {
+            Text(Self.versionText)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(Self.versionText)
+        } header: {
+            label("About")
+        }
     }
 }
 
