@@ -13,6 +13,7 @@ Run from the repo root:  python3 iOSProject/test_store_export.py
 import importlib.util
 import os
 import plistlib
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -176,10 +177,19 @@ def main():
     # itself: the generated project records the spec path, so editing the real
     # spec leaves the repo dirty and confuses the next run.
     src = (HERE / "make_store_ipa.py").read_text()
+    # Look at the xcodegen CALL, not the whole file: the renamed project path is
+    # legitimately built elsewhere (to verify it was generated), so a file-wide
+    # search would fail on correct code.
+    gen_call = re.search(r'run\(\["xcodegen".*?\)\s*,\s*"generate',
+                         src, re.S)
+    check("the xcodegen call was found", gen_call is not None)
+    call = gen_call.group(0) if gen_call else ""
     check("--project is an output directory, not a filename",
-          '"--project", "."' in src and 'f"{TEMP_PROJECT_NAME}.xcodeproj"' not in src)
+          '"--project", "."' in call and "xcodeproj" not in call,
+          f"xcodegen call was: {call[:200]}")
     check("--spec points at a separate file, not project.yml",
-          '"--spec", TEMP_SPEC.name' in src and '"--spec", "project.yml"' not in src)
+          '"--spec", TEMP_SPEC.name' in call and '"spec", "project.yml"' not in call,
+          f"xcodegen call was: {call[:200]}")
     check("the temporary spec and project are cleaned up afterwards",
           "TEMP_SPEC" in src and "finally:" in src and "rmtree" in src)
     check("a missing generated project is reported, not assumed",
