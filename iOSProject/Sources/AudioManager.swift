@@ -150,6 +150,66 @@ final class AudioManager: ObservableObject {
         }
     }
 
+    /// Adds an NVDA addon the user picked, taking every engine it contains.
+    ///
+    /// The addon is searched rather than trusted: what comes out is whatever the
+    /// engine could actually speak with, which is the same standard a directly
+    /// picked DLL has to meet. An addon holding nothing usable is reported as
+    /// such, not as a broken file -- carrying no engine is a normal shape for
+    /// these archives.
+    @discardableResult
+    func addAddonImport(data: Data, fileName: String) -> NVDAAddon.Outcome {
+        // An addon is never the missing 1998 core, so it must not be swallowed
+        // by the waiting-for-core path.
+        guard !isWaitingForCore else {
+            lastError = "Pick the shared core module first — the 1998 file is still waiting for it."
+            return .notAnAddon
+        }
+
+        guard NVDAAddon.looksLikeAddon(data) else {
+            lastError = "\(fileName) is not an NVDA addon."
+            return .notAnAddon
+        }
+
+        let engines = NVDAAddon.engines(in: data, fileName: fileName)
+        guard !engines.isEmpty else {
+            let name = NVDAAddon.manifestName(data) ?? fileName
+            lastError = "\(name) does not contain a voice this app can use."
+            return .noEngines(addonName: name, dllCount: 0)
+        }
+
+        var loaded: [ImportedWord] = []
+        var failed: [String] = []
+
+        for engine in engines {
+            guard ImportStore.store(data: engine.module, build: engine.word.build) else {
+                failed.append(engine.word.displayName)
+                continue
+            }
+            if let core = engine.core,
+               !ImportStore.store(data: core, build: engine.word.build, core: true) {
+                failed.append(engine.word.displayName)
+                continue
+            }
+            loaded.append(engine.word)
+        }
+
+        guard !loaded.isEmpty else {
+            lastError = "The voices in \(fileName) could not be saved."
+            return .noEngines(addonName: fileName, dllCount: engines.count)
+        }
+
+        refreshWords()
+        AVSpeechSynthesisProviderVoice.updateSpeechVoices()
+
+        if failed.isEmpty {
+            lastError = nil
+        } else {
+            lastError = "Loaded \(loaded.count) of \(engines.count) voices; \(failed.joined(separator: ", ")) could not be saved."
+        }
+        return .loaded(loaded)
+    }
+
     /// Completes a 1998 import once its core file has been picked too.
     @discardableResult
     func completeImport(withCore data: Data, fileName: String) -> ImportOutcome {

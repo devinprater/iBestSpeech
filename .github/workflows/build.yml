@@ -104,6 +104,15 @@ jobs:
 
           swift "$GITHUB_WORKSPACE/iOSProject/Tests/VoiceIdentifierTests.swift"
 
+          # The zip reader and its inflate. Self-contained: the vectors are raw
+          # deflate streams pinned from zlib, so this needs no corpus files.
+          swiftc -parse-as-library \
+            "$GITHUB_WORKSPACE/iOSProject/Sources/Deflate.swift" \
+            "$GITHUB_WORKSPACE/iOSProject/Sources/Zip.swift" \
+            "$GITHUB_WORKSPACE/iOSProject/Tests/ZipArchiveTests.swift" \
+            -o "$RUNNER_TEMP/ziptests"
+          "$RUNNER_TEMP/ziptests"
+
       - name: The generated tables must match their source
         run: |
           set -euo pipefail

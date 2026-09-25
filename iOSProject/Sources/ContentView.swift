@@ -70,18 +70,18 @@ struct ContentView: View {
             } label: {
                 Label(audioManager.isWaitingForCore
                       ? "Load the core file"
-                      : "Load a Keynote Gold file",
+                      : "Load a voice file",
                       systemImage: "folder.badge.plus")
                     .frame(minHeight: 44)
             }
             .accessibilityHint(audioManager.isWaitingForCore
                 ? "The 1998 file is waiting for the shared core module."
-                : "Opens the file picker. Choose a .dll from a Keynote Gold or BeSTspeech installation.")
+                : "Opens the file picker. Choose a Keynote Gold or BeSTspeech file, or an NVDA addon that contains one.")
 
             if audioManager.words.isEmpty {
-                Text("No voice files are loaded, so there is nothing to speak with yet. Load a Keynote Gold file to begin.")
+                Text("No voice files are loaded, so there is nothing to speak with yet. Load a Keynote Gold file to begin. If you already have an NVDA addon that contains a Keynote Gold or BeSTspeech voice, you can load that instead — the app takes the voice out of it for you.")
                     .font(.callout)
-                    .accessibilityLabel("No voice files are loaded. Load a Keynote Gold file to begin.")
+                    .accessibilityLabel("No voice files are loaded. Load a Keynote Gold file to begin. You can also load an NVDA addon that contains one, and the app will take the voice out of it.")
             } else {
                 ForEach(audioManager.words) { word in
                     HStack {
@@ -181,6 +181,12 @@ struct ContentView: View {
             Text("iBestSpeech includes the Keynote Gold speech engine. It does not include the voice data, which belongs to the people who made it. The files you load stay on this device and are used only by this app.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
+            Text("You can load a single voice file, or a whole NVDA addon that contains one. An addon is opened here on the device: the voices inside it are taken out and the rest of the addon is ignored. Nothing is downloaded, and an addon will only work if it actually contains a Keynote Gold or BeSTspeech voice.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         } header: {
             label("How this works")
         }
@@ -197,7 +203,41 @@ struct ContentView: View {
     private static var importableTypes: [UTType] {
         var types: [UTType] = [.item, .data]
         if let dll = UTType(filenameExtension: "dll") { types.append(dll) }
+        // An NVDA addon is not a type the system knows, so it resolves to a
+        // dynamic identifier; adding it makes the picker show those files as
+        // selectable rather than greyed out. Not fatal if the system has no
+        // answer -- `.item` and `.data` above already keep everything pickable.
+        if let addon = UTType(filenameExtension: "nvda-addon") { types.append(addon) }
         return types
+    }
+
+    /// Whether a picked file should go down the addon path.
+    ///
+    /// The extension is a hint, not a promise, and in the wild these archives
+    /// are sometimes plain `.zip`, so a zip's contents are checked too. A `.dll`
+    /// is never sniffed -- asking the zip reader about every engine module would
+    /// be wasted work on the common path.
+    private static func isAddon(url: URL, data: Data) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        if ext == "nvda-addon" { return true }
+        if ext == "zip" { return NVDAAddon.looksLikeAddon(data) }
+        return false
+    }
+
+    /// Reports what came out of an addon, which may be several voices.
+    private func handleAddon(data: Data, fileName: String) {
+        switch audioManager.addAddonImport(data: data, fileName: fileName) {
+        case .loaded(let words):
+            let names = words.map(\.displayName).joined(separator: ", ")
+            announce(words.count == 1
+                     ? "Loaded \(names)."
+                     : "Loaded \(words.count) voices: \(names).")
+        case .noEngines(let addonName, _):
+            announce(audioManager.lastError
+                     ?? "\(addonName) does not contain a voice this app can use.")
+        case .notAnAddon:
+            announce(audioManager.lastError ?? "That is not an NVDA addon.")
+        }
     }
 
     private func handleImport(_ result: Result<[URL], Error>) {
@@ -218,6 +258,12 @@ struct ContentView: View {
                 announcement = "That file could not be read."
                 outcome = nil
                 break
+            }
+            // An NVDA addon holds a whole synthesizer rather than being a single
+            // module, so it takes its own path and can yield several voices.
+            if Self.isAddon(url: url, data: data) {
+                handleAddon(data: data, fileName: url.lastPathComponent)
+                return
             }
             outcome = audioManager.addImport(data: data,
                                              fileName: url.lastPathComponent)
