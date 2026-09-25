@@ -21,11 +21,21 @@ if [[ -z "$REPO" ]]; then
     REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 fi
 NAME=$(basename "$IPA")
-EXPECTED_NAME="iBestSpeech-${TAG#v}-sideload.ipa"
-[[ "$NAME" == "$EXPECTED_NAME" ]] || {
-    echo "IPA name $NAME does not match release $TAG ($EXPECTED_NAME)" >&2
+# The name must identify the release and which KIND it is. A release attaches the
+# PUBLIC artefact -- no voice data -- and a bundled build stays a workflow
+# artifact, so accepting only "-sideload" would reject the one file we publish.
+# Both are accepted; anything else is a real mistake.
+TAG_VERSION=${TAG#v}
+EXPECTED_PUBLIC="iBestSpeech-${TAG_VERSION}-public.ipa"
+EXPECTED_BUNDLED="iBestSpeech-${TAG_VERSION}-sideload.ipa"
+if [[ "$NAME" != "$EXPECTED_PUBLIC" && "$NAME" != "$EXPECTED_BUNDLED" ]]; then
+    echo "IPA name $NAME does not match release $TAG" >&2
+    echo "  expected $EXPECTED_PUBLIC (distributable) or $EXPECTED_BUNDLED (author's device)" >&2
     exit 1
-}
+fi
+if [[ "$NAME" == "$EXPECTED_BUNDLED" ]]; then
+    echo "WARNING: publishing a bundled IPA (with voice data) for $TAG" >&2
+fi
 
 # Tag lookup is used ONLY to resolve the numeric release ID. Its embedded
 # assets field is unreliable; never make publish/delete decisions from it.
