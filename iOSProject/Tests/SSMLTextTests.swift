@@ -232,6 +232,15 @@ struct SSMLTextTests {
                "literal em dash")
         expect("<speak>Read\u{2026}6:23 PM</speak>", "Read...6- 23 PM",
                "literal ellipsis")
+        // Full-width forms from CJK input (U+FF01-U+FF5E) fold to ASCII: a
+        // full-width question mark made the 1995 build return no audio at
+        // all, dropping everything after a Chinese run.
+        expect("<speak>\u{FF1F}, September 14</speak>", "?: September 14",
+               "full-width question mark folds")
+        expect("<speak>\u{FF0C}\u{FF01}</speak>", ":!",
+               "full-width comma and bang fold")
+        expect("<speak>\u{FF08}hi\u{FF09}</speak>", "(hi)",
+               "full-width parens fold")
 
         print("\n-- the engine's lead-in character must not arrive from text --")
         // '~' introduces the engine's own commands. A literal one in text is

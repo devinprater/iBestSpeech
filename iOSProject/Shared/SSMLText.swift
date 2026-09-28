@@ -496,6 +496,20 @@ public enum SSMLText {
             if character == "~" { output.append(" "); continue }
             if character.isASCII { output.append(character); continue }
 
+            // Full-width ASCII variants (U+FF01-U+FF5E: the forms CJK input
+            // methods produce for ? , ! and the rest) fold to their ASCII
+            // selves. Measured: a phrase containing U+FF1F is ZERO samples
+            // on the 1995 build -- the whole utterance goes silent, which is
+            // how "Captain Chen, <Chinese>, September ..." lost everything
+            // after the Chinese run -- while 2006 merely skips the character.
+            if character.unicodeScalars.count == 1,
+               let scalar = character.unicodeScalars.first,
+               (0xFF01...0xFF5E).contains(scalar.value),
+               let ascii = UnicodeScalar(scalar.value - 0xFEE0) {
+                output.append(Character(ascii))
+                continue
+            }
+
             // Typographic punctuation has an ASCII form but no diacritic to
             // decompose, so it needs naming explicitly. These are the same
             // replacements the named entities above already make, which is why
