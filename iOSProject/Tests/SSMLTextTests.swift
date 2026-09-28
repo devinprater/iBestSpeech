@@ -410,6 +410,11 @@ struct SSMLTextTests {
         expect("<speak>Devin.</speak>", "Devven.", "Devin before a period")
         expect("<speak>LinkedIn.</speak>", "Linked Inn.",
                "LinkedIn before a period")
+        // The rules collapse the doubled L ("llama" needs that; initials
+        // don't), so "LLMs" reads "ell-em-ess". Spaced letters name each
+        // one, per the file's own convention (MIDI, HDMI).
+        expect("<speak>LLM</speak>", "L L M", "LLM names every letter")
+        expect("<speak>LLMs</speak>", "L L M S", "LLMs names every letter")
         // Native "Stange" drops its g ("Saint"); the wanted reading keeps a
         // hard g and an "ee" ending, which the single word "stanggy" gives as
         // one token with one stress -- right for a surname.
