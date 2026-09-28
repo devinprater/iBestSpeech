@@ -17,9 +17,12 @@ name: release
 #            uploaded as a workflow artifact because the author installs it on his
 #            own device, and NOT attached to a release: it is not ours to hand out.
 #
-# A `v*` tag builds both, publishes the PUBLIC one, and attaches it to the
-# Release. workflow_dispatch builds both and uploads them as artifacts WITHOUT
-# publishing anything, so a package can be inspected before it goes anywhere.
+# A `v*` tag builds both and uploads them as artifacts. Publishing the public
+# build to the Release is STASHED for now (see the Publish step): a table-free
+# build in downloaders' hands reads as broken voices, so nothing is attached
+# until the import story is clearer. workflow_dispatch builds both and uploads
+# them as artifacts WITHOUT publishing anything, so a package can be inspected
+# before it goes anywhere.
 on:
   push:
     tags: ['v*']
@@ -352,7 +355,11 @@ jobs:
           retention-days: 30
 
       - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/v')
+        # STASHED: the public build stays a workflow artifact for now, so no
+        # table-free .ipa meets downloaders before the import story is clear.
+        # Re-enable by restoring the tag condition below.
+        if: false
+        # if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
