@@ -109,6 +109,8 @@ enum Pronunciations {
         ("Wi-Fi", "why fye"),
         ("API's", "A P I's"),
         ("MySQL", "my ess cue ell"),
+        ("y'all", "yawl"),
+        ("Y'all", "yawl"),
         ("Emoji", "eh moe jee"),
         ("emoji", "eh moe jee"),
         ("ASCII", "ass key"),

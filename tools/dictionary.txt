@@ -111,6 +111,10 @@ LLMs	L L M S
 MySQL	my ess cue ell
 SQLite	ess cue lite
 PostgreSQL	post gres cue ell
+# The apostrophe breaks "yall" into two syllables ("yuh-all"); the plain
+# word "yawl" is exactly the wanted sound on every English build.
+y'all	yawl
+Y'all	yawl
 JavaScript	java script
 TypeScript	type script
 Python	pie thon

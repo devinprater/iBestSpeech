@@ -424,6 +424,11 @@ struct SSMLTextTests {
         // one, per the file's own convention (MIDI, HDMI).
         expect("<speak>LLM</speak>", "L L M", "LLM names every letter")
         expect("<speak>LLMs</speak>", "L L M S", "LLMs names every letter")
+        // The apostrophe splits "yall" into "yuh-all"; plain "yawl" is the
+        // wanted sound on every English build.
+        expect("<speak>y'all</speak>", "yawl", "y'all stays one syllable")
+        expect("<speak>Y'all come back</speak>", "yawl come back",
+               "capital Y'all stays one syllable")
         // Native "Stange" drops its g ("Saint"); the wanted reading keeps a
         // hard g and an "ee" ending, which the single word "stanggy" gives as
         // one token with one stress -- right for a surname.
