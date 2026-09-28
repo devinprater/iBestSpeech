@@ -106,6 +106,8 @@ SoC	ess oh see
 # --- Software and computing ---
 Ubuntu	oo boon too
 Debian	Deb ee an
+LLM	L L M
+LLMs	L L M S
 MySQL	my ess cue ell
 SQLite	ess cue lite
 PostgreSQL	post gres cue ell
