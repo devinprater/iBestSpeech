@@ -399,12 +399,15 @@ struct SSMLTextTests {
         // plus "neck" are both clean words the engine already reads well.
         expect("<speak>bottleneck</speak>", "bottle neck", "bottleneck is split")
         // "Devin" voices its e as a long i ("Divin"); "Dev" is the short-e
-        // form, as in "developer" and "Kevin". The second syllable is "un"
-        // (schwa), not "in": on the 2006 builds "in." is read as the
-        // abbreviation for inches, so "Devin." came out "dev inches".
+        // form, as in "developer" and "Kevin". The single word "Devven"
+        // reads like "seven" with a D on all three English builds -- short
+        // e, unstressed second syllable -- so the name stays one word with
+        // one stress instead of two ("Dev un"). It is also period-safe:
+        // "Devven." never forms the "in." token the 2006 builds read as
+        // the abbreviation for inches ("Devin." came out "dev inches").
         // "LinkedIn" keeps "Inn" instead -- its second syllable is stressed.
-        expect("<speak>Devin</speak>", "Dev un", "Devin has a short e")
-        expect("<speak>Devin.</speak>", "Dev un.", "Devin before a period")
+        expect("<speak>Devin</speak>", "Devven", "Devin has a short e")
+        expect("<speak>Devin.</speak>", "Devven.", "Devin before a period")
         expect("<speak>LinkedIn.</speak>", "Linked Inn.",
                "LinkedIn before a period")
         // Native "Stange" drops its g ("Saint"); the wanted reading keeps a

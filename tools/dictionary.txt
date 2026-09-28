@@ -104,7 +104,6 @@ SSID	S S I D
 SoC	ess oh see
 
 # --- Software and computing ---
-Linux	Linn ex
 Ubuntu	oo boon too
 Debian	Deb ee an
 MySQL	my ess cue ell
@@ -143,8 +142,8 @@ Bitcoin	bit coin
 Cryptocurrency	crypto currency
 Blockchain	block chain
 bottleneck	bottle neck
-Devin	Dev un
-devin	Dev un
+Devin	Devven
+devin	Devven
 Stange	stanggy
 stange	stanggy
 RetroBunn	Retro Bunn
