@@ -4,7 +4,7 @@
 A workflow is not compiled, so its mistakes surface as a red run twenty minutes
 in. This checks the things that are checkable from the file: that every artifact
 it uploads is one it built, that every path a later step reads was written by an
-earlier one, and that the published file is the table-free one.
+earlier one, and that the published file is the sideload one.
 
 Run from the repo root:  python3 iOSProject/test_release_workflow.py
 """
@@ -61,10 +61,13 @@ def main():
         check(f"referenced {kind(r)} .ipa is built", kind(r) in built_kinds,
               f"built kinds: {sorted(built_kinds)}")
 
-    # --- the published artifact must be the table-free one -------------------
+    # --- the published artifact must be the sideload one ---------------------
+    # The public build is stashed (a table-free .ipa reads as broken voices),
+    # so the release carries the bundled build instead. The tables are not
+    # ours to hand out -- the author's call, recorded in the workflow.
     publish = text.split("- name: Publish the release")[-1]
-    check("the release attaches the PUBLIC ipa",
-          "public.ipa" in publish and "sideload.ipa" not in publish,
+    check("the release attaches the SIDELOAD ipa",
+          "sideload.ipa" in publish and "public.ipa" not in publish,
           publish.strip()[:200])
 
     # --- both kinds are built, and the bundled one needs its flag ------------

@@ -11,18 +11,20 @@ name: release
 #
 #   public   carries NO table data. The tables belong to Berkeley/HumanWare, so
 #            they are left out and the user supplies their own Keynote Gold file,
-#            which the app imports at run time. This is the kind that is
-#            DISTRIBUTED -- it is what a Release attaches.
-#   bundled  carries the tables, as every release up to v1.0.11 did. Built and
-#            uploaded as a workflow artifact because the author installs it on his
-#            own device, and NOT attached to a release: it is not ours to hand out.
+#            which the app imports at run time. STASHED: not attached to a
+#            release for now, since a table-free .ipa reads as broken voices.
+#   bundled  carries the tables, as every release up to v1.0.11 did. Attached
+#            to the release as the sideload .ipa by the author's call (the
+#            tables are not ours to hand out -- recorded at the Publish step),
+#            and uploaded as a workflow artifact for his own device either way.
 #
-# A `v*` tag builds both and uploads them as artifacts. Publishing the public
-# build to the Release is STASHED for now (see the Publish step): a table-free
-# build in downloaders' hands reads as broken voices, so nothing is attached
-# until the import story is clearer. workflow_dispatch builds both and uploads
-# them as artifacts WITHOUT publishing anything, so a package can be inspected
-# before it goes anywhere.
+# A `v*` tag builds both and uploads them as artifacts, then attaches the
+# SIDELOAD one to the Release. The public build is STASHED (a table-free .ipa
+# in downloaders' hands reads as broken voices). Attaching the bundled build
+# overrides the older stance that the tables are not ours to hand out -- the
+# author's call, recorded at the Publish step. workflow_dispatch builds both
+# and uploads them as artifacts WITHOUT publishing anything, so a package can
+# be inspected before it goes anywhere.
 on:
   push:
     tags: ['v*']
@@ -355,18 +357,16 @@ jobs:
           retention-days: 30
 
       - name: Publish the release
-        # STASHED: the public build stays a workflow artifact for now, so no
-        # table-free .ipa meets downloaders before the import story is clear.
-        # Re-enable by restoring the tag condition below.
-        if: false
-        # if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # The PUBLIC .ipa is what gets attached. It carries no voice data, so it
-          # is the only one we are in a position to hand out; the bundled build
-          # stays a workflow artifact for the author's own device.
-          IPA="$RUNNER_TEMP/iBestSpeech-${VERSION}-public.ipa"
+          # The SIDELOAD .ipa is what gets attached: the public build is
+          # stashed (a table-free .ipa in downloaders' hands reads as broken
+          # voices), so the release carries the bundled build instead. The
+          # tables are not ours to hand out -- this is the author's call,
+          # recorded here so it stays deliberate.
+          IPA="$RUNNER_TEMP/iBestSpeech-${VERSION}-sideload.ipa"
           NOTES="$GITHUB_WORKSPACE/ReleaseNotes/${GITHUB_REF_NAME}.md"
           bash "$GITHUB_WORKSPACE/tools/publish_release.sh" "$GITHUB_REF_NAME" "$IPA" "$NOTES"
