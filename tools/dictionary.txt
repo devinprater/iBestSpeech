@@ -157,23 +157,35 @@ Wi-Fi's	why fye's
 #
 # ⛔ Adding a space before the "s" of a term that already works CHANGES ITS AUDIO
 # (measured on all three English builds: CDs, TVs, IDs, MPs, IOs, KBs, GPUs, ...),
-# so this is per-term and cannot be a general rule. The replacement spaces the
-# LETTERS and voices the plural "s" attached to the last letter ("P Cs"), which
-# keeps the plural a plural; "P C S" would spell a bare capital S.
+# so this is per-term and cannot be a general rule.
+#
+# The replacement is the two letter names said as ONE WORD, which is how a person
+# says a plural acronym. The engine renders "pea seas" as two words, so the entry
+# has to join them: name1 + the doubled onset of name2 + name2 + s. For PCs that is
+# "pea" + "s" + "seas" = "peasseas", which the engine reads as ONE word whose phone
+# sequence is exactly "pea seas" (16 23 0D 23 49) on 1995, 1998ENG and 2006ENG and
+# on the real dll_eng.dll / b32_tts.dll. A hyphen between the names is NOT the fix:
+# measured byte-identical to the two-word form, i.e. still two words.
+#
+# Five of the sixteen have such a one-word match and use it. The rest keep the
+# letters spaced ("H As"), which spells the letters correctly -- the bug was the
+# glommed lexicon lookup, not the letters -- but no one-word join reproduced their
+# letter-name phone sequence exactly, and a wrong join is worse than a correct
+# two-word reading.
 #
 # "MRs" is included because the native form is SILENT (0 samples) on 2006ENG.
 HAs	H As
 HIs	H Is
-ITs	I Ts
-KTs	K Ts
+ITs	eyetees
+KTs	kaytees
 LAs	L As
 LBs	L Bs
 MRs	M Rs
 MSs	M Ss
 NOs	N Os
-OZs	O Zs
-PCs	P Cs
-PGs	P Gs
+OZs	ohzees
+PCs	peasseas
+PGs	peagees
 RDs	R Ds
 SYs	S Ys
 WAs	W As

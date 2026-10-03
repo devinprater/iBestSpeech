@@ -527,9 +527,14 @@ struct SSMLTextTests {
         // "pieces" (measured byte-identical to lowercase "pcs"). A three-letter
         // run is unaffected -- no such word exists, so it spells letter by
         // letter on its own. Swept all 676 two-letter runs: exactly these glom.
-        expect("<speak>PCs</speak>", "P Cs", "two-letter acronym plurals spell")
-        expect("<speak>Two PCs here</speak>", "Two P Cs here",
+        // "PCs" must sound like "pea seas" as ONE word, so the entry joins the two
+        // letter names: the engine renders "pea seas" as two words, and
+        // "peasseas" as one word with the identical phone sequence.
+        expect("<speak>PCs</speak>", "peasseas",
+               "PCs reads as one word: pea seas")
+        expect("<speak>Two PCs here</speak>", "Two peasseas here",
                "the fix works mid-sentence")
+        expect("<speak>ITs</speak>", "eyetees", "ITs reads as one word: eye tees")
         expect("<speak>MRs</speak>", "M Rs",
                "MRs is rescued from silence, not just a misreading")
         // Terms the engine already spells must be left untouched. Widening the
