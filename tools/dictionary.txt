@@ -141,6 +141,44 @@ Hostname	host name
 FilenameExtension	file name extension
 Wi-Fi's	why fye's
 
+# --- Two-letter acronym plurals: the engine holds "pcs" as a WORD ---
+#
+# Measured: the engine's lexicon contains "pcs" as an ordinary word, so a
+# two-letter caps run followed by "s" is looked up as that word instead of being
+# spelled. "PCs" is byte-identical to lowercase "pcs" (9244 samples on 2006ENG,
+# 5877 on 1995) and differs from the spelled form ("P C S", 13071) -- that is why
+# "PCs" is heard as "pieces". The collision is with the word, not a misspelling
+# of the letters.
+#
+# A 3+ letter run is unaffected: "CPUs", "APIs", "IDs" and "USBs" already spell
+# letter by letter on their own, because no such word exists to be looked up.
+# Measured over all 676 two-letter runs, exactly the 16 below glom; every other
+# one spells correctly.
+#
+# ⛔ Adding a space before the "s" of a term that already works CHANGES ITS AUDIO
+# (measured on all three English builds: CDs, TVs, IDs, MPs, IOs, KBs, GPUs, ...),
+# so this is per-term and cannot be a general rule. The replacement spaces the
+# LETTERS and voices the plural "s" attached to the last letter ("P Cs"), which
+# keeps the plural a plural; "P C S" would spell a bare capital S.
+#
+# "MRs" is included because the native form is SILENT (0 samples) on 2006ENG.
+HAs	H As
+HIs	H Is
+ITs	I Ts
+KTs	K Ts
+LAs	L As
+LBs	L Bs
+MRs	M Rs
+MSs	M Ss
+NOs	N Os
+OZs	O Zs
+PCs	P Cs
+PGs	P Gs
+RDs	R Ds
+SYs	S Ys
+WAs	W As
+YDs	Y Ds
+
 # --- Modern usage the old lexicon will not have ---
 Podcast	pod cast
 Webinar	web i nar

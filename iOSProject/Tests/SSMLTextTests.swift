@@ -522,6 +522,27 @@ struct SSMLTextTests {
                "dedicated NPUs delivering over 45 TOPS of A I performance",
                "all-caps spec words stay, and AI spells its letters")
 
+        // The engine's lexicon holds "pcs" as an ordinary WORD, so a two-letter
+        // caps run followed by "s" is looked up as that word: "PCs" is heard as
+        // "pieces" (measured byte-identical to lowercase "pcs"). A three-letter
+        // run is unaffected -- no such word exists, so it spells letter by
+        // letter on its own. Swept all 676 two-letter runs: exactly these glom.
+        expect("<speak>PCs</speak>", "P Cs", "two-letter acronym plurals spell")
+        expect("<speak>Two PCs here</speak>", "Two P Cs here",
+               "the fix works mid-sentence")
+        expect("<speak>MRs</speak>", "M Rs",
+               "MRs is rescued from silence, not just a misreading")
+        // Terms the engine already spells must be left untouched. Widening the
+        // rule to any caps run would rewrite these and change what is heard --
+        // measured: inserting the space changes the audio of every one.
+        expect("<speak>CDs and TVs</speak>", "CDs and TVs",
+               "two-letter plurals that already work stay put")
+        // The comma becomes a colon here: softenCommas does that on purpose,
+        // because a user comma ends the text on the 2006 builds. Only the
+        // acronyms are under test, so the expectation carries that rule.
+        expect("<speak>CPUs, APIs and IDs</speak>", "CPUs: APIs and IDs",
+               "three-letter plurals are not touched")
+
         print("\n\(checks - failures.count)/\(checks) passed")
         if failures.isEmpty { exit(0) }
         print("\nFAILURES:")
