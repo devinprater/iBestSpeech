@@ -124,6 +124,8 @@ enum Pronunciations {
         ("email", "e mail"),
         ("dept.", "department"),
         ("govt.", "government"),
+        ("large", "larj"),
+        ("Large", "Larj"),
         ("iPad", "eye pad"),
         ("iPod", "eye pod"),
         ("iMac", "eye mac"),

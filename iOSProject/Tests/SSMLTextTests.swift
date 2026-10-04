@@ -548,6 +548,21 @@ struct SSMLTextTests {
         expect("<speak>CPUs, APIs and IDs</speak>", "CPUs: APIs and IDs",
                "three-letter plurals are not touched")
 
+        // A word after the article "a" gains a vowel in the engine: measured,
+        // "a large zebra" is byte-identical to "a largee zebra" on 1995, 1998ENG
+        // and 2006ENG, while "large zebra" and "the large zebra" are both
+        // correct. The respelling is byte-identical to "large" read alone, so
+        // the word's own sound is unchanged. Both spellings are in the
+        // dictionary; only the capitalised one appears here so the test stays
+        // case-sensitive in the same way the table is.
+        expect("<speak>a large, metallic X</speak>", "a larj: metallic X",
+               "a word after 'a' is respelled so no extra vowel is voiced")
+        expect("<speak>Large</speak>", "Larj",
+               "the capitalised form is in the dictionary too")
+        // Words that must NOT be caught by the same entry.
+        expect("<speak>larger</speak>", "larger", "a longer word is not rewritten")
+        expect("<speak>barge</speak>", "barge", "an unrelated word is not rewritten")
+
         print("\n\(checks - failures.count)/\(checks) passed")
         if failures.isEmpty { exit(0) }
         print("\nFAILURES:")

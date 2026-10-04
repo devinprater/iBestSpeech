@@ -234,3 +234,23 @@ vs.	versus
 approx.	approximately
 dept.	department
 govt.	government
+
+# --- words that gain a vowel after the article "a" -------------------------
+# Measured: the engine voices an extra vowel on the word when it follows "a":
+# "a large zebra" is byte-identical to "a largee zebra" on 1995, 1998ENG and
+# 2006ENG, while "large zebra" and "the large zebra" are both correct. The
+# respelling below is byte-identical to the original WHEN READ ALONE, so the
+# word's own sound does not change -- it only stops the article form from
+# adding the vowel.
+#
+# NOTE FOR `build_tables.py --check`: it judges an entry by comparing term and
+# replacement IN ISOLATION, and these two read the same alone, so it will list
+# them as "wasted". That verdict is wrong for this entry -- its evidence is
+# contextual. Keep them.
+#
+# Only two words out of an 88-word sweep show it, so it is a short list, not a
+# rule to apply to every word. Adding "e" to a word that already ends in a
+# vowel sound or a silent "e" changes nothing, so such words cannot be tested
+# this way and are deliberately absent.
+large	larj
+Large	Larj
